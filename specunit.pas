@@ -1,1096 +1,688 @@
-SEGMENT PROCEDURE SPECIALS;   (* P010301 *)
-    
-    CONST
-          SERIALBL = 5;
-  
-    VAR
-         SPCINDEX : INTEGER;
-         UNUSED   : INTEGER;
-         NUM2000  : RECORD CASE INTEGER OF
-                      1: (I: INTEGER);
-                      2: (P: ^INTEGER);
-                    END;
-  
-  
-    PROCEDURE INSPECT;  (* P010302 *)
-    
-      VAR
-           PICKCNT  : INTEGER;
-           PICKLIST : ARRAY[ 1..6] OF INTEGER;
-           UNUSEDXX : INTEGER;
-           PICKCHAR : INTEGER;
-           PICKREC  : TCHAR;
-           MAZE     : TMAZE;
-           INMYROOM : PACKED ARRAY[ 0..19] OF PACKED ARRAY[ 0..19] OF BOOLEAN;
-           CHECKED  : PACKED ARRAY[ 0..19] OF PACKED ARRAY[ 0..19] OF BOOLEAN;
-           
-        
-        
-      PROCEDURE LOOKLOST;  (* P010303 *)
-      
-      
-        PROCEDURE FOUNDLOS;  (* P010304 *)
-        
-          BEGIN
-            IF PICKCNT = 5 THEN
-              EXIT( LOOKLOST);
-            PICKCNT := PICKCNT + 1;
-            PICKLIST[ PICKCNT] := PICKCHAR;
-            WRITE( PICKCNT : 1);
-            WRITE( ') ');
-            WRITE( PICKREC.NAME);
-            WRITELN
-          END;  (* FOUNDLOS *)
-          
-          
-        BEGIN  (* LOOKLOST *)
-          PICKCNT := 0;
-          WRITE( CHR( 12));
-          WRITELN( 'FOUND:');
-          WRITELN;
-          WRITELN;
-          WRITELN;
-          FOR PICKCHAR := 0 TO SCNTOC.RECPERDK[ ZCHAR] - 1 DO
-            BEGIN
-              MOVELEFT( IOCACHE[ GETREC( ZCHAR, PICKCHAR, SIZEOF( TCHAR))],
-                        PICKREC,
-                        SIZEOF( TCHAR));
-              IF NOT PICKREC.INMAZE THEN
-                IF PICKREC.LOSTXYL.LOCATION[ 3] = MAZELEV THEN
-                  IF INMYROOM[ PICKREC.LOSTXYL.LOCATION[ 1],
-                               PICKREC.LOSTXYL.LOCATION[ 2] ] THEN
-                    FOUNDLOS
-            END;
-          IF PICKCNT = 0 THEN
-            WRITELN( '** NO ONE **')
-        END;  (* LOOKLOST *)
-        
-        
-      PROCEDURE PICKUP;  (* P010305 *)
-      
-        BEGIN
-          IF PARTYCNT = 6 THEN
-            BEGIN
-              GOTOXY( 0, 20);
-              WRITE( CHR( 11));
-              WRITELN( 'YOU HAVE 6 - PRESS [RET]');
-              GOTOXY( 41, 0);
-              REPEAT
-                GETKEY
-              UNTIL INCHAR = CHR( CRETURN);
-              EXIT( PICKUP)
-            END;
-              
-          REPEAT
-            GOTOXY( 0, 20);
-            WRITE( CHR( 11));
-            WRITE( 'GET WHO (0=EXIT) >');
-            GETKEY;
-            PICKCHAR := ORD( INCHAR) - ORD( '0');
-            IF PICKCHAR = 0 THEN
-              EXIT( PICKUP)
-          UNTIL (PICKCHAR > 0) AND (PICKCHAR <= PICKCNT);
-          
-          IF PICKLIST[ PICKCHAR] = -1 THEN
-            EXIT( PICKUP);
-          MOVELEFT( IOCACHE[ GETREC( ZCHAR,
-                                     PICKLIST[ PICKCHAR],
-                                     SIZEOF( TCHAR))],
-                    CHARACTR[ PARTYCNT],
-                    SIZEOF( TCHAR));
-          CHARDISK[ PARTYCNT] := PICKLIST[ PICKCHAR];
-          CHARACTR[ PARTYCNT].LOSTXYL.LOCATION[ 1] := 0;
-          CHARACTR[ PARTYCNT].LOSTXYL.LOCATION[ 2] := 0;
-          CHARACTR[ PARTYCNT].LOSTXYL.LOCATION[ 3] := 0;
-          CHARACTR[ PARTYCNT].INMAZE := TRUE;
-          MOVELEFT( CHARACTR[ PARTYCNT],
-                    IOCACHE[ GETRECW( ZCHAR,
-                                      PICKLIST[ PICKCHAR],
-                                      SIZEOF( TCHAR))],
-                    SIZEOF( TCHAR));
-          PICKLIST[ PICKCHAR] := - 1;
-          PARTYCNT := PARTYCNT + 1;
-          GOTOXY( 0, 3 + PICKCHAR);
-          WRITE( CHR( 29))
-        END;  (* PICKUP *)
-        
-        
-      PROCEDURE EXPLROOM;  (* P010306 *)
-      
-        VAR
-             VERT     : INTEGER;
-             HORZ     : INTEGER;
-             DONELOOK : BOOLEAN;
-      
-      
-        PROCEDURE CHECKLOC( X:    INTEGER;    (* P010307 *)
-                            Y:    INTEGER;
-                            WALL: TWALL);
-        
-          BEGIN
-            IF WALL <> OPEN THEN
-              EXIT( CHECKLOC);
-            X := (X + 20) MOD 20;
-            Y := (Y + 20) MOD 20;
-            IF INMYROOM[ X][ Y] THEN
-              EXIT( CHECKLOC);
-            DONELOOK := FALSE;
-            INMYROOM[ X][ Y] := TRUE
-          END;  (* CHECKLOC *)
-          
-          
-        BEGIN (* EXPLROOM *)
-          MOVELEFT( IOCACHE[ GETREC( ZMAZE, MAZELEV - 1, SIZEOF( TMAZE))],
-                    MAZE,
-                    SIZEOF( TMAZE));
-          FILLCHAR( INMYROOM, 80, 0);
-          INMYROOM[ MAZEX][ MAZEY] := TRUE;
-          FILLCHAR( CHECKED, 80, 0);
-          REPEAT
-            WRITE( '.');
-            DONELOOK := TRUE;
-            FOR HORZ := 0 TO 19 DO
-              FOR VERT := 0 TO 19 DO
-                IF INMYROOM[ HORZ][ VERT] THEN
-                  IF NOT CHECKED[ HORZ][ VERT] THEN
-                    BEGIN
-                      CHECKLOC( HORZ + 1, VERT, MAZE.E[ HORZ][ VERT]);
-                      CHECKLOC( HORZ - 1, VERT, MAZE.W[ HORZ][ VERT]);
-                      CHECKLOC( HORZ, VERT - 1, MAZE.S[ HORZ][ VERT]);
-                      CHECKLOC( HORZ, VERT + 1, MAZE.N[ HORZ][ VERT]);
-                      CHECKED[ HORZ][ VERT] := TRUE
-                    END
-          UNTIL DONELOOK
-        END;  (* EXPLROOM *)
-        
-        
-      BEGIN (* INSPECT *)
-        WRITE( CHR( 12));
-        WRITE( 'LOOKING');
-        TEXTMODE;
-        EXPLROOM;
-        LOOKLOST;
-        REPEAT
-          GOTOXY( 0, 20);
-          WRITE( 'OPTIONS: ');
-          IF PICKCNT > 0 THEN
-            WRITE( 'P)ICK UP, ');
-          WRITE( 'L)EAVE');
-          REPEAT
-            GOTOXY( 41, 0);
-            GETKEY
-          UNTIL (INCHAR = 'P') OR (INCHAR = 'L');
-          IF INCHAR = 'P' THEN
-            IF PICKCNT > 0 THEN
-              PICKUP;
-        UNTIL INCHAR = 'L';
-        XGOTO := XRUNNER;
-        GRAPHICS;
-        EXIT( SPECIALS)
-      END;  (* INSPECT *)
-      
-      
-    FUNCTION FINDFILE( DRIVE:  INTEGER;  (* P010308 *)
-                       FILENM: STRING) : INTEGER;
-                       
-      TYPE
-           DIRENTRY = RECORD
-             FIRSTBLK : INTEGER;
-             LASTBLK  : INTEGER;
-             FILEKIND : PACKED RECORD
-                 FT : (VOLHEAD, BADBLK, MACH6502, TEXT, DEBUG,
-                       DATA, GRAFFILE, FOTOFILE, SUBDIR);
-               END;
-             FILENAME : STRING[ 7];
-             VOLLB    : INTEGER;
-             FILECNT  : INTEGER;
-             LOADTIM  : INTEGER;
-             BOOTDATE : INTEGER;
-             RES1     : INTEGER;
-             RES2     : INTEGER;
-         END;
-               
-      VAR
-           DIR   : ARRAY[ 0..3] OF DIRENTRY;
-           FILEI : INTEGER;
-           FILEX : INTEGER;
-                       
-      BEGIN
-        NUM2000.I := 8192;
-        UNITREAD( DRIVE, DIR, 104, 2, 0);
-        IF IORESULT <> 0 THEN
-          FINDFILE := - ABS( IORESULT)
-        ELSE
-          BEGIN
-            FILEI := 0;
-            FOR FILEX := 1 TO DIR[ 0].FILECNT DO
-              IF (DIR[ FILEX].FILEKIND.FT >= BADBLK) AND
-                 (DIR[ FILEX].FILEKIND.FT <= FOTOFILE) THEN
-                IF DIR[ FILEX].FILENAME = FILENM THEN
-                  FILEI := FILEX;
-            IF FILEI = 0 THEN
-              FINDFILE := - 9
-            ELSE
-              FINDFILE := DIR[ FILEI].FIRSTBLK
-          END
-      END;  (* FINDFILE *)
-      
-      
-      
-    PROCEDURE INITGAME;  (* P010309 *)
-    
-      VAR
-           CPTEMP   : INTEGER;                 (* COPY PROTECTION CODE USES *)
-           UNUSED   : INTEGER;                 (* CP CODE *)
-           SAVEI    : INTEGER;                 (* CP CODE *)
-           SYNCH    : ARRAY[ 0..3] OF INTEGER; (* CP CODE *)
-           
-           DUPLSER : STRING[ 7];
-           MASTSER : STRING[ 7];
-    
-    
-    PROCEDURE MAZESCRN;  (* P01030A *)
-      
-      
-        PROCEDURE HORZHYPH;  (* P01030B *)
-        
-          BEGIN
-            FOR LLBASE04 := 1 TO 38 DO
-              PRINTCHR( CHR( 34))        (* HYPHEN GRAPHIC *)
-          END;
-          
-          
-        PROCEDURE HORZLINE( LINE : INTEGER);  (* P01030C *)
-        
-          BEGIN
-            MVCURSOR( 0, LINE);
-            PRINTCHR( CHR( 39));         (* TILTED "T" ON LEFT OF LINE  *)
-            HORZHYPH;
-            PRINTCHR( CHR( 40))          (* TILTED "T" ON RIGHT OF LINE *)
-          END;
-          
-          
-        PROCEDURE SCRNOUTL;  (* P01030D *)
-        
-          BEGIN
-            MVCURSOR( 0, 0);
-            PRINTCHR( CHR( 33));         (* UPPER LEFT CORNER *)
-            FOR LLBASE04 := 1 TO 38 DO
-              PRINTCHR( CHR( 34));       (* HYPHEN *)
-            PRINTCHR( CHR( 35));         (* UPPER RIGHT CORNER *)
-            FOR LLBASE04 := 1 TO 22 DO
-              BEGIN
-                MVCURSOR( 0, LLBASE04);
-                PRINTCHR( CHR( 36));     (* VERTICAL BAR ON LEFT  *)
-                MVCURSOR( 39, LLBASE04);
-                PRINTCHR( CHR( 36))      (* VERTICAL BAR ON RIGHT *)
-              END;
-            MVCURSOR( 0, 23);
-            PRINTCHR( CHR( 37));         (* BOTTOM LEFT CORNER *)
-            FOR LLBASE04 := 1 TO 38 DO
-              PRINTCHR( CHR( 34));       (* HYPHEN *)
-            PRINTCHR( CHR( 38))          (* BOTTOM RIGHT CORNER *)
-          END;
-          
-          
-        PROCEDURE INITSCRN;  (* P01030E *)
-        
-          VAR
-               UNUSED : ARRAY[ 0..1] OF INTEGER;
-              
-          BEGIN
-            CLRRECT( 0, 0, 40, 24);
-            UNITREAD( DRIVE1, CHARSET, BLOCKSZ, SCNTOCBL + 2, 0);
-            SCRNOUTL;
-            HORZLINE( 10);
-            HORZLINE( 15);
-            MVCURSOR( 12, 0);           
-            PRINTCHR( CHR( 91));         (* TILTED "T" TOP OF LINE *)
-            FOR LLBASE04 := 1 TO 9 DO
-              BEGIN
-                MVCURSOR( 12, LLBASE04);
-                PRINTCHR( CHR( 92))      (* VERTICAL BAR *)
-              END;
-            MVCURSOR( 12, 5);
-            PRINTCHR( CHR( 93));         (* TILTED "T" LEFT OF LINE *)
-            FOR LLBASE04 := 13 TO 38 DO
-              PRINTCHR( CHR( 34));       (* HYPHEN *)
-            PRINTCHR( CHR( 40));         (* TILTED "T" RIGHT OF LINE *)
-            MVCURSOR( 12, 10);
-            PRINTCHR( CHR( 94));         (* TILTED "T" BOTTOM OF LINE *)
-            UNITREAD( DRIVE1, CHARSET, BLOCKSZ, SCNTOCBL + 1, 0);
-            MVCURSOR( 1, 16);
-            PRINTSTR( '# CHARACTER NAME  CLASS AC HITS STATUS')
-          END;
-          
-        BEGIN (* MAZESCRN *)
-          CLRRECT( 0, 0, 40, 24);  (* REPEATED IN INITSCRN!? *)
-          INITSCRN
-        END;
-        
-        
-      PROCEDURE GTSERIAL;  (* P01030F *)
-      
-        (* GOOFY TRACK SYNCH COPYPROTECTION CODE *)
-      
-        BEGIN
-          UNITREAD( DRIVE1, IOCACHE, BLOCKSZ, SERIALBL, 0);
-          CPTEMP := 31;  (* OFFSET TO MANGLED SYNCH COUNTS *)
-          FOR SAVEI := 10 TO 13 DO
-            BEGIN
-              MOVELEFT( IOCACHE[ CPTEMP], SYNCH[ (SAVEI - 10)], 2);
-              CPTEMP := CPTEMP + 2 * (SYNCH[ SAVEI - 10] MOD 13) + 5
-            END;
-          MOVELEFT( IOCACHE, MASTSER, 8)
-        END;
-        
-        
-      PROCEDURE COPYPROT;  (* P010310 *)
-      
-        VAR
-             CPCALC   : INTEGER;
-             TRIES    : INTEGER;
-             GOODCOPY : BOOLEAN;
-      
-        BEGIN
-          FOR TRIES := 1 TO 5 DO
-            BEGIN
-               GOODCOPY := TRUE;
-              FOR SAVEI := 10 TO 13 DO
-                BEGIN
-                  UNITREAD( DRIVE1, IOCACHE, BLOCKSZ, 8 * SAVEI, 0);
-                  MVCURSOR( 60, 0);  (* JUMP TO $2002 AND EXECUTE *)
-                  CPTEMP := NUM2000.P^;  (* SYNCH COUNT FROM $2002
-                                              READING DISK TRACKS *)
-                  IF SAVEI = 10 THEN
-                    CPCALC := CPTEMP - SYNCH[ 10 - 10];
-                  CPTEMP := CPTEMP - CPCALC;
-                  IF ABS( CPTEMP -  SYNCH[ SAVEI - 10]) > 29 THEN
-                     GOODCOPY := FALSE;
-                END;
-              IF GOODCOPY THEN
-                EXIT( COPYPROT);
-            END;
-            
-          MVCURSOR( 70, 0);  (* CRASH AND BURN *)
-          HALT
-        END;
-        
-        
-        
-      BEGIN (* INITGAME *)
-      
-        IF LLBASE04 = -1 THEN
-          BEGIN
-            REPEAT
-              WRITE( CHR( 12));
-              GOTOXY( 0, 11);
-              WRITE( ' SCENARIO MASTER IN DRV 1, PRESS [RET]');
-              REPEAT
-                GOTOXY( 41, 0);
-                GETKEY
-              UNTIL INCHAR = CHR( CRETURN);
-              SCNTOCBL := FINDFILE( DRIVE1, 'SCENARIO.DATA')
-            UNTIL SCNTOCBL >= 0;
-            
-            UNITREAD( DRIVE1, NUM2000.P^, BLOCKSZ, SCNTOCBL + 3, 0);
-                (* SCNTOCBL + 3 FOLLOWS MAGE AND PRIEST SPELL NAMES *)
-                (* COPY PROTECTION CODE GETS LOADED TO $2000        *)
-            GTSERIAL; (* AND SOME COPY PROTECTION *)
-            COPYPROT; (* MORE COPY PROTECTION     *)
-            
-            REPEAT
-              WRITE( CHR( 12));
-              GOTOXY( 0, 11);
-              WRITE( ' MASTER/DUPLICATE IN DRV 1, PRESS [RET]');
-              REPEAT
-                GOTOXY( 41, 0);
-                GETKEY
-              UNTIL INCHAR = CHR( CRETURN);
-              SCNTOCBL := FINDFILE( DRIVE1, 'SCENARIO.DATA');
-              UNITREAD( DRIVE1, IOCACHE, BLOCKSZ, SERIALBL, 0);
-              MOVELEFT( IOCACHE, DUPLSER, 8)
-            UNTIL (SCNTOCBL >= 0) AND (MASTSER = DUPLSER);
-            
-            TIMEDLAY := 2000;
-            CACHEWRI := FALSE;
-            CACHEBL := 0;
-            UNITREAD( DRIVE1, IOCACHE, SIZEOF( IOCACHE), SCNTOCBL, 0);
-            MOVELEFT( IOCACHE, SCNTOC, SIZEOF( TSCNTOC))
-          END;
-          
-        XGOTO := XCASTLE;
-        WRITE( CHR( 12));
-        TEXTMODE;
-        MAZESCRN;
-        MAZEX    := 0;
-        MAZEY    := 0;
-        MAZELEV  := 0;
-        PARTYCNT := 0;
-        DIRECTIO := 0;
-        ACMOD2   := 0;
-        EXIT( SPECIALS)
-      END;
-    
-PROCEDURE SPCMISC;  (* P010311 *)
-  
-    VAR
-         MESSAGE  : PACKED ARRAY[ 0..511] OF CHAR;
-         
-         STRBUFF  : RECORD
-                      BUFF: STRING[ 38];
-                      ENDMSG : BOOLEAN;
-                    END;
-                    
-         LINECNT  : INTEGER;
-         MSGX     : INTEGER;
-         MSGBLK   : INTEGER;
-         CURMSGBL : INTEGER;
-         MSGBLK0  : INTEGER;
-         BOUNCEFL : INTEGER; (* MULTIPLE USES;  FIRST CHAR "FEE" 2CG *)
-         AUX0     : INTEGER; (* MULTIPLE USES:  EQINDEX, RANDOM 0-6, MSG INDEX
-                                                AUX0 *)
-         AUX1     : INTEGER; (* MULTIPLE USES:  AUX1, MSG INDEX, ....*)
-         AUX2     : INTEGER;
-         MAZEFLOR : TMAZE;
-  
-      
-    PROCEDURE DECRYPTM( MSGINDEX: INTEGER);  (* P010312 *)
-    
-      BEGIN
-        MSGBLK := MSGINDEX DIV 12;
-        MSGX := 42 * (MSGINDEX MOD 12);
-        IF MSGBLK <> CURMSGBL THEN
-          BEGIN
-            UNITREAD( DRIVE1, MESSAGE, BLOCKSZ, MSGBLK0 + MSGBLK, 0);
-            CURMSGBL := MSGBLK
-          END;
-        MOVELEFT( MESSAGE[ MSGX], STRBUFF.BUFF, 42)
-      END;
-    
-    
-    PROCEDURE DOMSG( MSGLINEX: INTEGER;   (* P010313 *)
-                     PRESSRET: BOOLEAN);
-    
-    
-      PROCEDURE DO1LINE;  (* P010314 *)
-      
-        BEGIN
-          IF LINECNT = 15 THEN
-            BEGIN
-              CLRRECT( 13, 6, 26, 4);
-              MVCURSOR( 19, 7);
-              PRINTSTR( '[RET] FOR MORE');
-              UNITCLEAR( 1);
-              REPEAT
-                GETKEY
-              UNTIL INCHAR = CHR( CRETURN);
-              CLRRECT( 13, 6, 26, 4);
-              CLRRECT( 1, 11, 38, 4);
-              LINECNT := 11;
-            END;
-          DECRYPTM( MSGLINEX);
-          MVCURSOR( 1, LINECNT);
-          PRINTSTR( STRBUFF.BUFF);
-          MSGLINEX := MSGLINEX + 1;
-          LINECNT := LINECNT + 1
-        END;  (* DO1LINE *)
-        
-        
-      BEGIN (* DOMSG *)
-        LINECNT := 11;
-        REPEAT
-          DO1LINE
-        UNTIL STRBUFF.ENDMSG;
-        IF PRESSRET THEN
-          BEGIN
-            CLRRECT( 13, 6, 26, 4);
-            MVCURSOR( 21, 7);
-            PRINTSTR( 'PRESS [RET]');
-            UNITCLEAR( 1);
-            REPEAT
-              GETKEY;
-            UNTIL INCHAR = CHR( CRETURN);
-            CLRRECT( 13, 6, 26, 4)
-          END;
-      END;  (* DOMSG *)
-      
-      
-    FUNCTION GOTITEM( CHARX: INTEGER;  (* P010315 *)
-                      ITEMX: INTEGER) : BOOLEAN;
-    
-      VAR
-           POSSX : INTEGER;
-           
-      BEGIN
-        GOTITEM := FALSE;
-        WITH CHARACTR[ CHARX] DO
-          BEGIN
-            IF POSS.POSSCNT = 8 THEN
-              EXIT( GOTITEM);
-            FOR POSSX := 1 TO POSS.POSSCNT DO
-              IF POSS.POSSESS[ POSSX].EQINDEX = ITEMX THEN
-                EXIT( GOTITEM);
-            CLRRECT( 1, 11, 38, 4);
-            MVCURSOR( 1, 11);
-            PRINTSTR( CHARACTR[ CHARX].NAME);
-            PRINTSTR( ' GOT ITEM');
-            POSSX := POSS.POSSCNT + 1;
-            POSS.POSSCNT := POSSX;
-            POSS.POSSESS[ POSSX].EQINDEX := ITEMX;
-            POSS.POSSESS[ POSSX].EQUIPED := FALSE;
-            POSS.POSSESS[ POSSX].CURSED  := FALSE
-          END;
-        GOTITEM := TRUE
-      END;
-      
-      
-    PROCEDURE TRYGET;  (* P010316 *)
-    
-      VAR
-           GOTONE : BOOLEAN;
-           CHARX  : INTEGER;
-           
-      BEGIN
-        GOTONE := FALSE;
-        FOR CHARX := 0 TO PARTYCNT - 1 DO
-          IF NOT GOTONE THEN
-            GOTONE := GOTITEM( CHARX, AUX0)
-      END;
-      
-      
-    PROCEDURE WHOWADE;  (* P010317 *)
-    
-      VAR
-           WADEX : INTEGER;
-           
-           
-      PROCEDURE MAKWORSE( THISSTAT: TSTATUS);  (* P010318 *)
-      
-        BEGIN
-          IF THISSTAT > CHARACTR[ WADEX].STATUS THEN
-            CHARACTR[ WADEX].STATUS := THISSTAT
-        END;
-        
-        
-      BEGIN (* WHOWADE *)
-        CLRRECT( 1, 11, 38, 4);
-        MVCURSOR( 2, 12);
-        PRINTSTR( '#) TO WADE, [RET] EXITS');
-        WADEX := GETCHARX( FALSE, '');
-        IF WADEX < 0 THEN
-          EXIT( WHOWADE);
-          
-        IF AUX0 = -1 THEN
-          AUX0 := RANDOM MOD 7;
-          
-        CASE AUX0 OF
-          0:  BEGIN
-                IF CHARACTR[ WADEX].STATUS < DEAD THEN
-                  BEGIN
-                    CHARACTR[ WADEX].STATUS := OK;
-                    CHARACTR[ WADEX].HPMAX  := CHARACTR[ WADEX].HPMAX - 8;
-                    CHARACTR[ WADEX].HPLEFT := CHARACTR[ WADEX].HPMAX;
-                    IF CHARACTR[ WADEX].HPMAX <= 0 THEN
-                      MAKWORSE( DEAD);
-                  END;
-              END;
-              
-          1:  BEGIN
-                IF (CHARACTR[ WADEX].ATTRIB[ IQ] = 3) OR
-                   (CHARACTR[ WADEX].ATTRIB[ PIETY] = 3) THEN
-                  MAKWORSE( DEAD)
-                ELSE
-                  BEGIN
-                    CHARACTR[ WADEX].AGE := CHARACTR[ WADEX].AGE - 52;
-                    CHARACTR[ WADEX].ATTRIB[ IQ] :=
-                      CHARACTR[ WADEX].ATTRIB[ IQ] - 1;
-                    CHARACTR[ WADEX].ATTRIB[ PIETY] :=
-                      CHARACTR[ WADEX].ATTRIB[ PIETY] - 1
-                  END
-              END;
-            
-          2:  CHARACTR[ WADEX].LOSTXYL.POISNAMT[ 1] := 1;
-          3:  MAKWORSE( ASLEEP);
-          4:  MAKWORSE( PLYZE);
-          5:  MAKWORSE( STONED);
-          6:  IF CHARACTR[ WADEX].STATUS = DEAD THEN
-                IF (RANDOM MOD 10 < 3) THEN
-                  BEGIN
-                    CHARACTR[ WADEX].STATUS := OK;
-                    CHARACTR[ WADEX].HPLEFT := CHARACTR[ WADEX].HPMAX
-                  END
-                ELSE
-                  CHARACTR[ WADEX].STATUS := ASHES;
-        END
-      END;  (* WHOWADE *)
-      
-      
-      
-    PROCEDURE GETYN;  (* P010319 *)
-    
-      BEGIN
-        CLRRECT( 1, 11, 38, 4);
-        MVCURSOR( 1, 11);
-        PRINTSTR( 'SEARCH (Y/N) ?');
-        REPEAT
-          GETKEY
-        UNTIL (INCHAR = 'Y') OR (INCHAR = 'N');
-        IF INCHAR = 'N' THEN
-          EXIT( SPECIALS);
-        IF AUX0 > 0 THEN
-          BEGIN
-            ATTK012 := 0;
-            ENEMYINX := AUX0;
-            XGOTO := XCOMBAT
-          END
-        ELSE
-          BEGIN
-            AUX0 := ABS( AUX0);
-            TRYGET
-          END;
-      END;
-    
-      
-    PROCEDURE BOUNCEBK;  (* P01031A *)
-    
-      BEGIN
-        CASE DIRECTIO OF
-          0:  MAZEY := MAZEY - 1;
-          1:  MAZEX := MAZEX - 1;
-          2:  MAZEY := MAZEY + 1;
-          3:  MAZEX := MAZEX + 1;
-        END;
-        MAZEY := (MAZEY + 20) MOD 20;
-        MAZEX := (MAZEX + 20) MOD 20;
-        IF AUX1 >= 0 THEN
-            DOMSG( AUX1, FALSE)
-      END;
-  
-  
-    PROCEDURE ITM2PASS;  (* P01031B *)
-    
-    VAR
-         POSX  : INTEGER;
-         CHARX : INTEGER;
-         
-      BEGIN
-        FOR CHARX := 0 TO PARTYCNT - 1 DO
-          WITH CHARACTR[ CHARX] DO
-            BEGIN
-              FOR POSX := 1 TO POSS.POSSCNT DO
-                IF POSS.POSSESS[ POSX].EQINDEX = AUX0 THEN
-                  EXIT( SPECIALS)
-            END;
-        BOUNCEBK
-      END;
-      
-      
-    PROCEDURE CHKALIGN;  (* P01031C *)
-    
-      VAR
-           CHARX : INTEGER;
-           
-      BEGIN
-        FOR CHARX := 0 TO PARTYCNT - 1 DO
-          WITH CHARACTR[ CHARX] DO
-            BEGIN
-              CASE ALIGN OF
-              
-                   GOOD:  IF (AUX0 = 0) OR (AUX0 = 2) OR
-                             (AUX0 = 4) OR (AUX0 = 6) THEN
-                            BOUNCEBK;
-                        
-                NEUTRAL:  IF (AUX0 = 0) OR (AUX0 = 1) OR
-                             (AUX0 = 4) OR (AUX0 = 5) THEN
-                            BOUNCEBK;
-                        
-                   EVIL:  IF (AUX0 < 4) THEN
-                            BOUNCEBK
-              END
-            END
-      END;  (* CHKALIGN *)
-      
-      
-    PROCEDURE CHKAUX0;  (* P01031D *)
-    
-      BEGIN
-        IF AUX0 = 99 THEN
-          LIGHT := LIGHT + 50
-        ELSE IF AUX0 = -99 THEN
-          LIGHT := 0
-        ELSE
-          ACMOD2 := AUX0
-      END;  (* CHKAUX0 *)
-      
-      
-    PROCEDURE BCK2SHOP;  (* P01031E *)
-    
-      BEGIN
-        MAZELEV := 0;
-        WRITE( CHR(12));
-        XGOTO := XNEWMAZE
-      END;
-        
-        
-    PROCEDURE RIDDLES;  (* P01031F *)
-    
-      VAR
-           ANSWER : STRING[ 40];
-    
-      BEGIN
-        CLRRECT( 1, 11, 38, 4);
-        MVCURSOR( 1, 11);
-        PRINTSTR( 'ANSWER ?');
-        GETSTR( ANSWER, 1, 13);
-        DECRYPTM( AUX0);
-        CLRRECT( 1, 11, 38, 4);
-        MVCURSOR( 1, 11);
-        IF STRBUFF.BUFF <> ANSWER THEN
-          BEGIN
-            AUX1 := - 1;
-            PRINTSTR( 'WRONG!');
-            BOUNCEBK
-          END
-        ELSE
-          PRINTSTR( 'RIGHT!')
-      END;
+unit SPECUNIT;
+
+{ Wizardry I — SPECIALS segment.
+  Source: apple/wiz1b/SPECIALS + apple/wiz1b/SPECIALS2.
+  Key changes from Apple Pascal:
+    - EXIT(SPECIALS) from nested procs -> _done := true; exit (flag checked on return)
+    - MOVELEFT/SIZEOF record copy -> LOADTCHAR / LOADTMAZE (pointer-aware loaders)
+    - Variant record access LOSTXYL.LOCATION[n] -> LOSTXYL[n] (flat array)
+    - MAZE.E[x][y] -> MAZE.E^[x][y]
+    - GTSERIAL / COPYPROT / FINDFILE dir-scan -> skipped (Atari port)
+    - SWITCHLOC flood-fill -> simplified placeholder (TODO: implement fully)
+    - MP nesting tested >=7 levels; all procs at original nesting depth. }
+
+interface
+
+uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+
+procedure SPECIALS;
+
+implementation
+
+var
+  _done : Boolean;   { set true to simulate EXIT(SPECIALS) from a nested proc }
 
 
-    PROCEDURE FEEIS;  (* P010320 *)
-    
-      VAR
-           GOLDTOT : TWIZLONG;
-           FEE     : TWIZLONG;
-    
-    
-      PROCEDURE FEE2LONG;  (* P010321 *)
-      
-        VAR
-             MULT10 : INTEGER;
-             STRX   : INTEGER;
-      
-        BEGIN
-          IF STRBUFF.BUFF[ 1] >= '@' THEN
-            BEGIN
-              BOUNCEFL := ORD( STRBUFF.BUFF[ 1]) - ORD( 'A') + 1;
-              STRBUFF.BUFF := COPY( STRBUFF.BUFF, 2,
-                                    ORD( STRBUFF.BUFF[ 0]) - 1)
-            END
-          ELSE
-            BOUNCEFL := 0;
-          FILLCHAR( FEE, 6, 0);
-          MULT10 := 10;
-          FOR STRX := 1 TO LENGTH( STRBUFF.BUFF) DO
-            BEGIN
-              MULTLONG( FEE, MULT10);
-              FEE.LOW := FEE.LOW + ORD( STRBUFF.BUFF[ STRX]) - ORD( '0')
-            END
-        END;
-        
-        
-      PROCEDURE CHKGOLD;  (* P010322 *)
-      
-        VAR
-             CHARX : INTEGER;
-      
-        BEGIN
-          FILLCHAR( GOLDTOT, 6, 0);
-          FOR CHARX := 0 TO PARTYCNT - 1 DO
-            ADDLONGS( GOLDTOT, CHARACTR[ CHARX].GOLD);
-          IF TESTLONG( GOLDTOT, FEE) <> -1 THEN
-            EXIT( CHKGOLD);
-          PRINTSTR( 'NOT ENOUGH $');
-          IF BOUNCEFL = 0 THEN
-            BOUNCEBK;
-          EXIT( SPECIALS)
-        END;
-        
-        
-      PROCEDURE PAYGOLD;  (* P010323 *)
-      
-        VAR
-             CHARX : INTEGER;
-      
-        BEGIN
-          FILLCHAR( GOLDTOT, 6, 0);
-          FOR CHARX := 0 TO PARTYCNT - 1 DO
-            BEGIN
-              IF FEE <> GOLDTOT THEN
-                IF TESTLONG( FEE, CHARACTR[ CHARX].GOLD) = 1 THEN
-                  BEGIN
-                    SUBLONGS( FEE, CHARACTR[ CHARX].GOLD);
-                    FILLCHAR( CHARACTR[ CHARX].GOLD, 6, 0)
-                  END
-                ELSE
-                  BEGIN
-                    SUBLONGS( CHARACTR[ CHARX].GOLD, FEE);
-                    FILLCHAR( FEE, 6, 0)
-                  END
-            END;
-          PRINTSTR( 'THANKS!')
-        END;
-        
-        
-      BEGIN (* FEEIS *)
-        DECRYPTM( AUX0);
-        FEE2LONG;
-        CLRRECT( 1, 11, 38, 4);
-        MVCURSOR( 1, 11);
-        PRINTSTR( 'FEE IS ');
-        PRINTSTR( STRBUFF.BUFF);
-        MVCURSOR( 1, 13);
-        PRINTSTR( 'PAY (Y/N) ?');
-        REPEAT
-          GETKEY
-        UNTIL (INCHAR = 'Y') OR (INCHAR = 'N');
-        AUX1 := -1;
-        IF INCHAR = 'N' THEN
-          BEGIN
-            IF BOUNCEFL = 0 THEN
-               BOUNCEBK;
-            EXIT( SPECIALS)
-          END
-        ELSE
-          BEGIN
-            CLRRECT( 1, 11, 38, 4);
-            MVCURSOR( 1, 11);
-            CHKGOLD;
-            PAYGOLD;
-            IF BOUNCEFL > 0 THEN
-              BEGIN
-                MAZEX   := MAZEFLOR.AUX2[ BOUNCEFL];
-                MAZEY   := MAZEFLOR.AUX1[ BOUNCEFL];
-                MAZELEV := MAZEFLOR.AUX0[ BOUNCEFL];
-                XGOTO := XNEWMAZE
-              END
-          END
-      END;
-      
-      
-    PROCEDURE LOOKOUT;  (* P010324 *)
-    
-      VAR
-           Y  : INTEGER;
-           X  : INTEGER;
-           Y2 : INTEGER;
-           X2 : INTEGER;
-           
-      BEGIN
-        FOR X2 := - AUX0 TO AUX0 DO
-          FOR Y2 := - AUX0 TO AUX0 DO
-            BEGIN
-              X := (MAZEX + X2 + 20) MOD 20;
-              Y := (MAZEY + Y2 + 20) MOD 20;
-              FIGHTMAP[ X, Y] := TRUE
-            END;
-        FIGHTMAP[ MAZEX, MAZEY] := FALSE
-      END;
-      
-      
-    PROCEDURE SWITCHLOC;  (* P010325 *)
-    
-      VAR
-           BEENHERE : PACKED ARRAY[ 0..19] OF PACKED ARRAY[ 0..19] OF BOOLEAN;
-           UNUSED1  : INTEGER;
-           UNUSED2  : INTEGER;
-           UNUSED3  : INTEGER;
-           DOORCNT  : INTEGER;  (* DOORS GONE THROUGH *)
-    
-    
-      PROCEDURE SWITCH( VAR FIRST:  INTEGER;  (* P010326 *)
-                        VAR SECOND: INTEGER);
-      
-        VAR
-             SAVE : INTEGER;
-      
-        BEGIN
-          SAVE   := FIRST;
-          FIRST  := SECOND;
-          SECOND := SAVE
-        END;
-        
-        
-      PROCEDURE FINDDOOR;  (* P010327 *)
-    
-        VAR
-             LIMITMOV : INTEGER;  (* LIMIT DOORS (ROOMS) MOVED THROUGH *)
-    
-    
-        FUNCTION P010328( X : INTEGER; Y : INTEGER) : BOOLEAN;  (* P010328 *)
-        
-        
-          PROCEDURE TRYADJ( X : INTEGER; Y : INTEGER);  (* P010329 *)
-            
-            
-            PROCEDURE CHK4DOOR( WALLTYPE : TWALL;  (* P01032A *)
-                                MOVETOX  : INTEGER;
-                                MOVETOY  : INTEGER);
-            
-              BEGIN (* CHK4DOOR *)
-                IF (WALLTYPE = OPEN) OR (WALLTYPE = WALL) THEN
-                  EXIT( CHK4DOOR);
-                IF WALLTYPE = HIDEDOOR THEN
-                  IF (RANDOM MOD 100) < 65 THEN
-                    EXIT( CHK4DOOR);
-                    
-                (* EITHER A DOOR OR SOMETIMES A HIDDEN DOOR *)
-                    
-                MOVETOX := (MOVETOX + 20) MOD 20;
-                MOVETOY := (MOVETOY + 20) MOD 20;
-                IF (DOORCNT = 0) OR
-                  (NOT (BEENHERE[ MOVETOX][ MOVETOY])
-                   AND ((RANDOM MOD 100) > (65 - LIMITMOV))) THEN
-                   BEGIN
-                     SAVEX := X;
-                     SAVEY := Y;
-                     MAZEX := MOVETOX;
-                     MAZEY := MOVETOY;
-                     DOORCNT := DOORCNT + 1;
-                     P010328 := TRUE;
-                     EXIT( P010328)
-                   END;
-              END;  (* CHK4DOOR *)
-              
-              
-            BEGIN (* TRYADJ *)
-              X := (X + 20) MOD 20;
-              Y := (Y + 20) MOD 20;
-              IF BEENHERE[ X][ Y] THEN
-                EXIT( TRYADJ);
-              IF MAZEFLOR.SQRETYPE[ MAZEFLOR.SQREXTRA[ X][ Y]] <> NORMAL THEN
-                BEGIN
-                  MAZEX := X;
-                  MAZEY := Y;
-                  EXIT( FINDDOOR)
-                END;
-                
-              BEENHERE[ X][ Y] := TRUE;
-              
-              CHK4DOOR( MAZEFLOR.N[ X][ Y], X, Y + 1);
-              CHK4DOOR( MAZEFLOR.S[ X][ Y], X, Y - 1);
-              CHK4DOOR( MAZEFLOR.E[ X][ Y], X + 1, Y);
-              CHK4DOOR( MAZEFLOR.W[ X][ Y], X - 1, Y);
-              
-              IF MAZEFLOR.N[ X][ Y] = OPEN THEN
-                TRYADJ( X, Y + 1);
-              IF MAZEFLOR.W[ X][ Y] = OPEN THEN
-                TRYADJ( X - 1, Y);
-              IF MAZEFLOR.E[ X][ Y] = OPEN THEN
-                TRYADJ( X + 1, Y);
-              IF MAZEFLOR.S[ X][ Y] = OPEN THEN
-                TRYADJ( X, Y - 1)
-            END;  (* TRYADJ *)
-        
-        
-          BEGIN (* P010328 *)
-            P010328 := FALSE;
-            TRYADJ( X, Y)
-          END;  (* P010328 *)
-          
-          
-          
-        BEGIN  (* FINDDOOR *)
-          LIMITMOV := 0;
-          WHILE  (DOORCNT = 0) OR
-                 ((RANDOM MOD 65) >  LIMITMOV) DO
-            BEGIN
-              IF NOT P010328( MAZEX, MAZEY) THEN
-                EXIT( FINDDOOR);
-              LIMITMOV := LIMITMOV + 10;
-            END;
-        END;
-      
-      
-      BEGIN  (* SWITCHLOC *)
-        XGOTO2 := XCOMBAT;
-        XGOTO := XRUNNER;
-        FILLCHAR( BEENHERE, 80, 0);
-        DOORCNT := 0;
-        MAZEFLOR.SQREXTRA[ MAZEX][ MAZEY] := 0;
-        FINDDOOR;
-        DIRECTIO := RANDOM MOD 4;
-        EXIT( SPECIALS);
-      END;  (* SWITCHLOC *)
-      
-      
-    BEGIN  (* SPCMISC *)
-      MOVELEFT( IOCACHE[ GETREC( ZMAZE, MAZELEV - 1, SIZEOF( TMAZE))],
-                MAZEFLOR,
-                SIZEOF( TMAZE));
-      BOUNCEFL := SPCINDEX;
-      IF BOUNCEFL = 0 THEN
-        SWITCHLOC;
-      XGOTO2 := XSCNMSG;
-      CLRRECT( 1, 11, 38, 4);
-      MSGBLK0 := FINDFILE( DRIVE1, 'SCENARIO.MESGS');
-      IF MSGBLK0 < 0 THEN
-        BEGIN
-          MVCURSOR( 1, 11);
-          PRINTSTR( 'MESGS LOST');
-          EXIT( SPECIALS);
-        END;
-      CURMSGBL := 0;
-      UNITREAD( DRIVE1, MESSAGE, BLOCKSZ, MSGBLK0, 0);
-      AUX2 := MAZEFLOR.AUX2[ BOUNCEFL];
-      AUX1 := MAZEFLOR.AUX1[ BOUNCEFL];
-      AUX0 := MAZEFLOR.AUX0[ BOUNCEFL];
-      XGOTO := XRUNNER;
-      IF AUX2 = 0 THEN
-        EXIT( SPECIALS);
-      IF (AUX2 = 1) OR (AUX2 = 4) OR (AUX2 = 8) THEN
-        BEGIN
-          IF AUX0 = 0 THEN
-            EXIT( SPECIALS)
-          ELSE
-            BEGIN
-              IF AUX2 <> 4 THEN
-                BEGIN
-                  IF AUX0 > 0 THEN
-                    MAZEFLOR.AUX0[ BOUNCEFL] := AUX0 - 1;
-                  IF AUX0 = 1 THEN
-                    MAZEFLOR.SQRETYPE[ BOUNCEFL] := NORMAL;
-                END
-              ELSE
-                IF AUX0 < 0 THEN
-                  IF AUX0 > -1000 THEN
-                    MAZEFLOR.AUX0[ BOUNCEFL] := 0
-                  ELSE
-                    AUX0 := AUX0 + 1000;
-              MOVELEFT( MAZEFLOR,
-                        IOCACHE[ GETRECW( ZMAZE, MAZELEV - 1, SIZEOF( TMAZE))],
-                        SIZEOF( TMAZE))
-            END
-        END;
-        
-      CLRRECT( 1, 11, 38, 4);
-      IF NOT ( (AUX2 = 5) OR (AUX2 = 6) ) THEN
-        DOMSG( AUX1,
-                 (AUX2 = 2)  OR (AUX2 = 3) OR (AUX2 = 4) OR
-                 (AUX2 = 10) OR (AUX2 = 11) OR (AUX2 = 12));
-      CASE AUX2 OF
-         2: TRYGET;
-         3: WHOWADE;
-         4: GETYN;
-         5: ITM2PASS;
-         6: CHKALIGN;
-         7: CHKAUX0;
-         8: BCK2SHOP;
-         9: LOOKOUT;
-        10: RIDDLES;
-        11: FEEIS;
-      END;
-    END;  (* SPCMISC *)
-    
-  BEGIN  (* SPECIALS *)
-  
-    IF XGOTO = XINSAREA THEN
-      INSPECT;
-    XGOTO := XGOTO2;
-    SPCINDEX := LLBASE04;
-    IF SPCINDEX < 0 THEN
-      INITGAME
-    ELSE
-      SPCMISC
+{ MP cannot type-check ARRAY_OF_PTR[i].FIELD correctly for non-trivial types;
+  passing TCHAR by var reference is the one chain that resolves these fields. }
+function GETPOSS( var C: TCHAR; IDX: SmallInt): ^TPOSSESS;
+begin
+  GETPOSS := C.POSS.POSSESS[ IDX]
+end;
 
-  END;  (* SPECIALS *)
+function GETNAME( var C: TCHAR): string;
+begin
+  GETNAME := C.NAME
+end;
+
+procedure SETSTAT( var C: TCHAR; S: TSTATUS);
+begin
+  C.STATUS := TSTATUS( Byte( S))
+end;
+
+function GETGOLD( var C: TCHAR): TWIZLONG;
+begin
+  GETGOLD := C.GOLD
+end;
+
+procedure SETGOLD( var C: TCHAR; G: TWIZLONG);
+begin
+  C.GOLD.XLOW  := G.XLOW;
+  C.GOLD.XMID  := G.XMID;
+  C.GOLD.XHIGH := G.XHIGH
+end;
+
+
+procedure SPECIALS;
+var
+  SPCINDEX : SmallInt;
+
+
+  { ────────────────────────────────────────────────────────────────────────── }
+  { INSPECT — find and recover lost characters from the current maze room.    }
+  { ────────────────────────────────────────────────────────────────────────── }
+  procedure INSPECT;
+  var
+    PICKCNT  : SmallInt;
+    PICKLIST : array[ 0..6] of SmallInt;   { AP: 1..6, extended to 0..6 }
+    PICKCHAR : SmallInt;
+    PICKREC  : TCHAR;
+    MAZE     : TMAZE;
+    INMYROOM : array[ 0..19, 0..19] of Boolean;
+    CHECKED  : array[ 0..19, 0..19] of Boolean;
+    DONELOOK : Boolean;
+
+
+    procedure LOOKLOST;
+
+      procedure FOUNDLOS;
+      begin
+        if PICKCNT >= 5 then exit;
+        PICKCNT := PICKCNT + 1;
+        PICKLIST[ PICKCNT] := PICKCHAR;
+        Write( PICKCNT); Write( ') ');
+        WriteLn( PICKREC.NAME)
+      end;
+
+    begin { LOOKLOST }
+      PICKCNT := 0;
+      Write( Chr( 12)); WriteLn( 'FOUND:'); WriteLn( ''); WriteLn( ''); WriteLn( '');
+      for PICKCHAR := 0 to SCNTOC.RECPERDK[ ZCHAR] - 1 do
+        begin
+          FillChar( PICKREC, SizeOf( TCHAR), 0);
+          LOADTCHAR( PICKCHAR, PICKREC);
+          if not PICKREC.INMAZE then
+            if PICKREC.LOSTXYL[ 3] = MAZELEV then      { AP: LOSTXYL.LOCATION[3] }
+              if INMYROOM[ PICKREC.LOSTXYL[ 1], PICKREC.LOSTXYL[ 2]] then
+                FOUNDLOS
+        end;
+      if PICKCNT = 0 then WriteLn( '** NO ONE **')
+    end;
+
+
+    procedure PICKUP;
+    begin
+      if PARTYCNT = 6 then
+        begin
+          MVCURSOR( 0, 20); Write( Chr( 11));
+          WriteLn( 'YOU HAVE 6 - PRESS [RET]');
+          MVCURSOR( 41, 0);
+          repeat GETKEY until INCHAR = Chr( CRETURN);
+          exit
+        end;
+      repeat
+        MVCURSOR( 0, 20); Write( Chr( 11));
+        Write( 'GET WHO (0=EXIT) >');
+        GETKEY;
+        PICKCHAR := Ord( INCHAR) - Ord( '0');
+        if PICKCHAR = 0 then exit
+      until (PICKCHAR > 0) and (PICKCHAR <= PICKCNT);
+      if PICKLIST[ PICKCHAR] = -1 then exit;
+      FillChar( CHARACTR[ PARTYCNT]^, SizeOf( TCHAR), 0);
+      LOADTCHAR( PICKLIST[ PICKCHAR], CHARACTR[ PARTYCNT]^);
+      CHARDISK[ PARTYCNT]             := PICKLIST[ PICKCHAR];
+      CHARACTR[ PARTYCNT].LOSTXYL[1] := 0;
+      CHARACTR[ PARTYCNT].LOSTXYL[2] := 0;
+      CHARACTR[ PARTYCNT].LOSTXYL[3] := 0;
+      CHARACTR[ PARTYCNT].INMAZE     := true;
+      SAVETCHAR( PICKLIST[ PICKCHAR], CHARACTR[ PARTYCNT]^);
+      PICKLIST[ PICKCHAR] := -1;
+      PARTYCNT := PARTYCNT + 1;
+      MVCURSOR( 0, 3 + PICKCHAR); Write( Chr( 29))
+    end;
+
+
+    procedure EXPLROOM;
+    var
+      VERT, HORZ : SmallInt;
+
+      procedure CHECKLOC( X, Y, WALL: SmallInt);
+      begin
+        if WALL <> Ord( OPEN) then exit;
+        X := (X + 20) mod 20;
+        Y := (Y + 20) mod 20;
+        if INMYROOM[ X][ Y] then exit;
+        DONELOOK := false;
+        INMYROOM[ X][ Y] := true
+      end;
+
+    begin { EXPLROOM }
+      LOADTMAZE( MAZELEV - 1, MAZE);
+      FillChar( INMYROOM, SizeOf( INMYROOM), 0);
+      INMYROOM[ MAZEX][ MAZEY] := true;
+      FillChar( CHECKED, SizeOf( CHECKED), 0);
+      repeat
+        Write( '.');
+        DONELOOK := true;
+        for HORZ := 0 to 19 do
+          for VERT := 0 to 19 do
+            if INMYROOM[ HORZ][ VERT] and not CHECKED[ HORZ][ VERT] then
+              begin
+                CHECKLOC( HORZ+1, VERT,   MAZE.E^[ HORZ*20+VERT]);
+                CHECKLOC( HORZ-1, VERT,   MAZE.W^[ HORZ*20+VERT]);
+                CHECKLOC( HORZ,   VERT-1, MAZE.S^[ HORZ*20+VERT]);
+                CHECKLOC( HORZ,   VERT+1, MAZE.N^[ HORZ*20+VERT]);
+                CHECKED[ HORZ][ VERT] := true
+              end
+      until DONELOOK
+    end;
+
+
+  begin  { INSPECT }
+    Write( Chr( 12)); Write( 'LOOKING');
+    TEXTMODE; EXPLROOM; LOOKLOST;
+    repeat
+      MVCURSOR( 0, 20); Write( 'OPTIONS: ');
+      if PICKCNT > 0 then Write( 'P)ICK UP, ');
+      Write( 'L)EAVE');
+      repeat MVCURSOR( 41, 0); GETKEY until (INCHAR = 'P') or (INCHAR = 'L');
+      if INCHAR = 'P' then if PICKCNT > 0 then PICKUP
+    until INCHAR = 'L';
+    XGOTO  := XRUNNER;
+    GRAPHICS;
+    _done  := true
+  end;  { INSPECT }
+
+
+  { ────────────────────────────────────────────────────────────────────────── }
+  { INITGAME — first-time initialisation: find scenario, load SCNTOC, draw   }
+  { the main maze screen.  Copy-protection removed for Atari port.            }
+  { ────────────────────────────────────────────────────────────────────────── }
+  procedure INITGAME;
+
+    procedure MAZESCRN;
+
+      procedure HORZHYPH;
+      var I : SmallInt;
+      begin
+        for I := 1 to 38 do PRINTCHR( Chr( 34))   { hyphen graphic }
+      end;
+
+      procedure SCRNOUTL;
+      var I : SmallInt;
+      begin
+        MVCURSOR( 0, 0); PRINTCHR( Chr( 33));
+        for I := 1 to 38 do PRINTCHR( Chr( 34));
+        PRINTCHR( Chr( 35));
+        for I := 1 to 22 do
+          begin
+            MVCURSOR( 0,  I); PRINTCHR( Chr( 36));
+            MVCURSOR( 39, I); PRINTCHR( Chr( 36))
+          end;
+        MVCURSOR( 0, 23); PRINTCHR( Chr( 37));
+        for I := 1 to 38 do PRINTCHR( Chr( 34));
+        PRINTCHR( Chr( 38))
+      end;
+
+      procedure HORZLINE( LINE: SmallInt);
+      begin
+        MVCURSOR( 0, LINE); PRINTCHR( Chr( 39)); HORZHYPH; PRINTCHR( Chr( 40))
+      end;
+
+      procedure INITSCRN;
+      var I : SmallInt;
+      begin
+        CLRRECT( 0, 0, 40, 24);
+        { TODO: load border charset from block SCNTOCBL+2 into CHARSET }
+        SCRNOUTL; HORZLINE( 10); HORZLINE( 15);
+        MVCURSOR( 12, 0); PRINTCHR( Chr( 91));
+        for I := 1 to 9 do begin MVCURSOR( 12, I); PRINTCHR( Chr( 92)) end;
+        MVCURSOR( 12, 5); PRINTCHR( Chr( 93));
+        for I := 13 to 38 do PRINTCHR( Chr( 34));
+        PRINTCHR( Chr( 40));
+        MVCURSOR( 12, 10); PRINTCHR( Chr( 94));
+        { TODO: load combat charset from block SCNTOCBL+1 into CHARSET }
+        MVCURSOR( 1, 16);
+        PRINTSTR( '# CHARACTER NAME  CLASS AC HITS STATUS')
+      end;
+
+    begin { MAZESCRN }
+      CLRRECT( 0, 0, 40, 24);
+      INITSCRN
+    end;
+
+
+  begin  { INITGAME }
+    if LLBASE04 = -1 then
+      begin
+        repeat
+          Write( Chr( 12)); GotoXY( 0, 11);
+          Write( ' SCENARIO DISK IN DRIVE, PRESS [RETURN]');
+          repeat MVCURSOR( 41, 0); GETKEY until INCHAR = Chr( CRETURN);
+          SCNTOCBL := FINDFILE( DRIVE1, 'SCENARIO.DATA')
+        until SCNTOCBL >= 0;
+        TIMEDLAY := 2000;
+        CACHEWRI := false;
+        CACHEBL  := -1;
+        UNITREAD( SCNTOCBL);
+        LOADSCNTOC;
+      end;
+    XGOTO    := XCASTLE;
+    Write( Chr( 12)); TEXTMODE; MAZESCRN;
+    MAZEX    := 0; MAZEY    := 0; MAZELEV  := 0;
+    PARTYCNT := 0; DIRECTIO := 0; ACMOD2   := 0;
+    _done    := true
+  end;  { INITGAME }
+
+
+  { ────────────────────────────────────────────────────────────────────────── }
+  { SPCMISC — special-square event handler (messages, traps, fees, etc.)     }
+  { ────────────────────────────────────────────────────────────────────────── }
+  procedure SPCMISC;
+  var
+    MESSAGE  : array[ 0..511] of Char;
+    STRBUFF  : TSTRBUFF;
+    MSGX     : SmallInt;
+    MSGBLK   : SmallInt;
+    CURMSGBL : SmallInt;
+    MSGBLK0  : SmallInt;
+    BOUNCEFL : SmallInt;
+    AUX0     : SmallInt;
+    AUX1     : SmallInt;
+    AUX2     : SmallInt;
+    MAZEFLOR : TMAZE;
+
+
+    procedure DECRYPTM( MSGINDEX: SmallInt);
+    begin
+      MSGBLK := MSGINDEX div 12;
+      MSGX   := 42 * (MSGINDEX mod 12);
+      if MSGBLK <> CURMSGBL then
+        begin
+          UNITREAD_MSG( MSGBLK0 + MSGBLK, MESSAGE[0]);
+          CURMSGBL := MSGBLK
+        end;
+      Move( MESSAGE[ MSGX], STRBUFF.BUFF, 42)
+    end;
+
+
+    procedure DOMSG( MSGLINEX: SmallInt; PRESSRET: Boolean);
+    var
+      LINECNT : SmallInt;
+
+      procedure DO1LINE;
+      begin
+        if LINECNT = 15 then
+          begin
+            CLRRECT( 13, 6, 26, 4); MVCURSOR( 19, 7); PRINTSTR( '[RET] FOR MORE');
+            repeat GETKEY until INCHAR = Chr( CRETURN);
+            CLRRECT( 13, 6, 26, 4); CLRRECT( 1, 11, 38, 4);
+            LINECNT := 11
+          end;
+        DECRYPTM( MSGLINEX);
+        MVCURSOR( 1, LINECNT); PRINTSTR( STRBUFF.BUFF);
+        MSGLINEX := MSGLINEX + 1;
+        LINECNT  := LINECNT  + 1
+      end;
+
+    begin { DOMSG }
+      LINECNT := 11;
+      repeat DO1LINE until STRBUFF.ENDMSG;
+      if PRESSRET then
+        begin
+          CLRRECT( 13, 6, 26, 4); MVCURSOR( 21, 7); PRINTSTR( 'PRESS [RET]');
+          repeat GETKEY until INCHAR = Chr( CRETURN);
+          CLRRECT( 13, 6, 26, 4)
+        end
+    end;
+
+
+    function GOTITEM( CHARX, ITEMX: SmallInt): Boolean;
+    var POSSX : SmallInt; PP : ^TPOSSESS;
+    begin
+      GOTITEM := false;
+      if CHARACTR[ CHARX].POSS.POSSCNT = 8 then exit;
+      for POSSX := 1 to CHARACTR[ CHARX].POSS.POSSCNT do
+        begin
+          PP := GETPOSS( CHARACTR[ CHARX]^, POSSX);
+          if PP.EQINDEX = ITEMX then exit
+        end;
+      CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11);
+      PRINTSTR( GETNAME( CHARACTR[ CHARX]^)); PRINTSTR( ' GOT ITEM');
+      POSSX := CHARACTR[ CHARX].POSS.POSSCNT + 1;
+      CHARACTR[ CHARX].POSS.POSSCNT := POSSX;
+      PP := GETPOSS( CHARACTR[ CHARX]^, POSSX);
+      PP.EQINDEX := ITEMX;
+      PP.EQUIPED := false;
+      PP.CURSED  := false;
+      GOTITEM := true
+    end;
+
+
+    procedure TRYGET;
+    var GOTONE : Boolean; CHARX : SmallInt;
+    begin
+      GOTONE := false;
+      for CHARX := 0 to PARTYCNT - 1 do
+        if not GOTONE then GOTONE := GOTITEM( CHARX, AUX0)
+    end;
+
+
+    procedure BOUNCEBK;
+    begin
+      case Byte( DIRECTIO) of
+        0: MAZEY := MAZEY - 1;
+        1: MAZEX := MAZEX - 1;
+        2: MAZEY := MAZEY + 1;
+        3: MAZEX := MAZEX + 1
+      end;
+      MAZEY := (MAZEY + 20) mod 20;
+      MAZEX := (MAZEX + 20) mod 20;
+      if AUX1 >= 0 then DOMSG( AUX1, false)
+    end;
+
+
+    procedure WHOWADE;
+    var
+      WADEX : SmallInt;
+      TC    : ^TCHAR;
+
+      procedure MAKWORSE( THISSTAT: TSTATUS);
+      var CURSTAT : Byte;
+      begin
+        CURSTAT := CHARACTR[ WADEX].STATUS;      { read: auto-deref is BYTE }
+        if Byte( THISSTAT) > CURSTAT then
+          CHARACTR[ WADEX].STATUS := TSTATUS( Byte( THISSTAT))
+      end;
+
+    begin { WHOWADE }
+      CLRRECT( 1, 11, 38, 4); MVCURSOR( 2, 12);
+      PRINTSTR( '#) TO WADE, [RET] EXITS');
+      WADEX := GETCHARX( false, '');
+      if WADEX < 0 then exit;
+      TC := CHARACTR[ WADEX];
+      if AUX0 = -1 then AUX0 := Random( 7);
+      case Byte( AUX0) of
+        0: if TC.STATUS < DEAD then
+             begin
+               TC.STATUS := OK;
+               TC.HPMAX  := TC.HPMAX - 8;
+               TC.HPLEFT := TC.HPMAX;
+               if TC.HPMAX <= 0 then MAKWORSE( DEAD)
+             end;
+        1: if (TC.ATTRIB[ IQ] = 3) or
+              (TC.ATTRIB[ PIETY] = 3) then
+             MAKWORSE( DEAD)
+           else
+             begin
+               TC.AGE := TC.AGE - 52;
+               TC.ATTRIB[ IQ]    := TC.ATTRIB[ IQ]    - 1;
+               TC.ATTRIB[ PIETY] := TC.ATTRIB[ PIETY] - 1
+             end;
+        2: TC.LOSTXYL[ 1] := 1;  { POISNAMT[1] := 1 }
+        3: MAKWORSE( ASLEEP);
+        4: MAKWORSE( PLYZE);
+        5: MAKWORSE( STONED);
+        6: if TC.STATUS = DEAD then
+             begin
+               if Random( 10) < 3 then
+                 begin
+                   TC.STATUS := OK;
+                   TC.HPLEFT := TC.HPMAX
+                 end
+               else
+                 SETSTAT( CHARACTR[ WADEX]^, ASHES)
+             end
+      end
+    end;
+
+
+    procedure GETYN;
+    begin
+      CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11); PRINTSTR( 'SEARCH (Y/N) ?');
+      repeat GETKEY until (INCHAR = 'Y') or (INCHAR = 'N');
+      if INCHAR = 'N' then begin _done := true; exit end;
+      if AUX0 > 0 then
+        begin ATTK012 := 0; ENEMYINX := AUX0; XGOTO := XCOMBAT end
+      else
+        begin AUX0 := Abs( AUX0); TRYGET end
+    end;
+
+
+    procedure ITM2PASS;
+    var POSX, CHARX : SmallInt; PP : ^TPOSSESS;
+    begin
+      for CHARX := 0 to PARTYCNT - 1 do
+        for POSX := 1 to CHARACTR[ CHARX].POSS.POSSCNT do
+          begin
+            PP := GETPOSS( CHARACTR[ CHARX]^, POSX);
+            if PP.EQINDEX = AUX0 then exit
+          end;
+      BOUNCEBK  { no party member carries AUX0 item — block passage }
+    end;
+
+
+    procedure CHKALIGN;
+    var CHARX : SmallInt;
+    begin
+      for CHARX := 0 to PARTYCNT - 1 do
+        case TALIGN( CHARACTR[ CHARX].ALIGN) of
+          GOOD:    if (AUX0 = 0) or (AUX0 = 2) or
+                      (AUX0 = 4) or (AUX0 = 6) then BOUNCEBK;
+          NEUTRAL: if (AUX0 = 0) or (AUX0 = 1) or
+                      (AUX0 = 4) or (AUX0 = 5) then BOUNCEBK;
+          EVIL:    if AUX0 < 4 then BOUNCEBK
+        end
+    end;
+
+
+    procedure CHKAUX0;
+    begin
+      if      AUX0 =  99 then LIGHT := LIGHT + 50
+      else if AUX0 = -99 then LIGHT := 0
+      else                     ACMOD2 := AUX0
+    end;
+
+
+    procedure BCK2SHOP;
+    begin
+      MAZELEV := 0; Write( Chr( 12)); XGOTO := XNEWMAZE
+    end;
+
+
+    procedure RIDDLES;
+    var ANSWER : string[ 40];
+    begin
+      CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11); PRINTSTR( 'ANSWER ?');
+      GETSTR( ANSWER, 1, 13);
+      DECRYPTM( AUX0);
+      CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11);
+      if STRBUFF.BUFF <> ANSWER then
+        begin AUX1 := -1; PRINTSTR( 'WRONG!'); BOUNCEBK end
+      else
+        PRINTSTR( 'RIGHT!')
+    end;
+
+
+    procedure FEEIS;
+    var
+      FEE     : TWIZLONG;
+      GOLDTOT : TWIZLONG;
+
+      procedure FEE2LONG;
+      var MULT10, STRX : SmallInt;
+      begin
+        if STRBUFF.BUFF[ 1] >= '@' then
+          begin
+            BOUNCEFL := Ord( STRBUFF.BUFF[ 1]) - Ord( 'A') + 1;
+            STRBUFF.BUFF := Copy( STRBUFF.BUFF, 2, Length( STRBUFF.BUFF) - 1)
+          end
+        else
+          BOUNCEFL := 0;
+        FillChar( FEE, 6, 0);
+        MULT10 := 10;
+        for STRX := 1 to Length( STRBUFF.BUFF) do
+          begin
+            MULTLONG( FEE, MULT10);
+            FEE.XLOW := FEE.XLOW + Ord( STRBUFF.BUFF[ STRX]) - Ord( '0')
+          end
+      end;
+
+      procedure CHKGOLD;
+      var CHARX : SmallInt;
+      begin
+        FillChar( GOLDTOT, 6, 0);
+        for CHARX := 0 to PARTYCNT - 1 do
+          ADDLONGS( GOLDTOT, GETGOLD( CHARACTR[ CHARX]^));
+        if TESTLONG( GOLDTOT, FEE) <> -1 then exit;
+        PRINTSTR( 'NOT ENOUGH $');
+        if BOUNCEFL = 0 then BOUNCEBK;
+        _done := true
+      end;
+
+      procedure PAYGOLD;
+      var CHARX : SmallInt; LOCALG : TWIZLONG;
+      begin
+        FillChar( GOLDTOT, 6, 0);
+        for CHARX := 0 to PARTYCNT - 1 do
+          if TESTLONG( FEE, GOLDTOT) <> 0 then
+            begin
+              LOCALG := GETGOLD( CHARACTR[ CHARX]^);
+              if TESTLONG( FEE, LOCALG) = 1 then
+                begin
+                  SUBLONGS( FEE, LOCALG);
+                  FillChar( LOCALG, 6, 0);
+                  SETGOLD( CHARACTR[ CHARX]^, LOCALG)
+                end
+              else
+                begin
+                  SUBLONGS( LOCALG, FEE);
+                  SETGOLD( CHARACTR[ CHARX]^, LOCALG);
+                  FillChar( FEE, 6, 0)
+                end
+            end;
+        PRINTSTR( 'THANKS!')
+      end;
+
+    begin { FEEIS }
+      DECRYPTM( AUX0); FEE2LONG;
+      CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11);
+      PRINTSTR( 'FEE IS '); PRINTSTR( STRBUFF.BUFF);
+      MVCURSOR( 1, 13); PRINTSTR( 'PAY (Y/N) ?');
+      repeat GETKEY until (INCHAR = 'Y') or (INCHAR = 'N');
+      AUX1 := -1;
+      if INCHAR = 'N' then
+        begin
+          if BOUNCEFL = 0 then BOUNCEBK;
+          _done := true; exit
+        end
+      else
+        begin
+          CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11);
+          CHKGOLD;
+          if _done then exit;
+          PAYGOLD;
+          if BOUNCEFL > 0 then
+            begin
+              MAZEX   := MAZEFLOR.AUX2[ BOUNCEFL];
+              MAZEY   := MAZEFLOR.AUX1[ BOUNCEFL];
+              MAZELEV := MAZEFLOR.AUX0[ BOUNCEFL];
+              XGOTO   := XNEWMAZE
+            end
+        end
+    end;
+
+
+    procedure LOOKOUT;
+    var X, Y, X2, Y2 : SmallInt;
+    begin
+      for X2 := -AUX0 to AUX0 do
+        for Y2 := -AUX0 to AUX0 do
+          begin
+            X := (MAZEX + X2 + 20) mod 20;
+            Y := (MAZEY + Y2 + 20) mod 20;
+            FIGHTMAP[ X][ Y] := true
+          end;
+      FIGHTMAP[ MAZEX][ MAZEY] := false
+    end;
+
+
+    { SWITCHLOC — spinner square.
+      AP: flood-fill through doors from current position to find a random
+          adjacent room to teleport into, then set direction randomly.
+      TODO: implement full door-following algorithm from apple/wiz1b/SPECIALS2
+            (P010325-P01032A).  Simplified version used for now. }
+    procedure SWITCHLOC;
+    begin
+      XGOTO2 := XCOMBAT;
+      XGOTO  := XRUNNER;
+      MAZEX    := Random( 20);
+      MAZEY    := Random( 20);
+      DIRECTIO := Random( 4);
+      _done    := true
+    end;
+
+
+  begin  { SPCMISC }
+    LOADTMAZE( MAZELEV - 1, MAZEFLOR);
+    BOUNCEFL := SPCINDEX;
+    if BOUNCEFL = 0 then
+      begin SWITCHLOC; if _done then exit end;
+    XGOTO2  := XSCNMSG;
+    CLRRECT( 1, 11, 38, 4);
+    MSGBLK0 := FINDFILE( DRIVE1, 'SCENARIO.MESGS');
+    if MSGBLK0 < 0 then
+      begin
+        MVCURSOR( 1, 11); PRINTSTR( 'MESGS LOST');
+        _done := true; exit
+      end;
+    CURMSGBL := 0;
+    UNITREAD_MSG( MSGBLK0, MESSAGE[0]);
+    AUX2  := MAZEFLOR.AUX2[ BOUNCEFL];
+    AUX1  := MAZEFLOR.AUX1[ BOUNCEFL];
+    AUX0  := MAZEFLOR.AUX0[ BOUNCEFL];
+    XGOTO := XRUNNER;
+    if AUX2 = 0 then exit;
+    if (AUX2 = 1) or (AUX2 = 4) or (AUX2 = 8) then
+      begin
+        if AUX0 = 0 then exit
+        else
+          begin
+            if AUX2 <> 4 then
+              begin
+                if AUX0 > 0 then MAZEFLOR.AUX0[ BOUNCEFL] := AUX0 - 1;
+                if AUX0 = 1 then MAZEFLOR.SQRETYPE[ BOUNCEFL] := Byte( NORMAL)
+              end
+            else
+              if AUX0 < 0 then
+                if AUX0 > -1000 then MAZEFLOR.AUX0[ BOUNCEFL] := 0
+                else                  AUX0 := AUX0 + 1000;
+            { TODO: SAVETMAZE( MAZELEV-1, MAZEFLOR) }
+          end
+      end;
+    CLRRECT( 1, 11, 38, 4);
+    if not ((AUX2 = 5) or (AUX2 = 6)) then
+      DOMSG( AUX1, (AUX2 = 2)  or (AUX2 = 3) or (AUX2 = 4) or
+                   (AUX2 = 10) or (AUX2 = 11) or (AUX2 = 12));
+    case Byte( AUX2) of
+       2: TRYGET;
+       3: WHOWADE;
+       4: GETYN;
+       5: ITM2PASS;
+       6: CHKALIGN;
+       7: CHKAUX0;
+       8: BCK2SHOP;
+       9: LOOKOUT;
+      10: RIDDLES;
+      11: FEEIS
+    end;
+    { _done may have been set by GETYN or FEEIS inside the case }
+  end;  { SPCMISC }
+
+
+  { ────────────────────────────────────────────────────────────────────────── }
+  { SPECIALS main body                                                         }
+  { ────────────────────────────────────────────────────────────────────────── }
+begin
+  _done := false;
+  if XGOTO = XINSAREA then
+    begin INSPECT; if _done then exit end;
+  XGOTO    := XGOTO2;
+  SPCINDEX := LLBASE04;
+  if SPCINDEX < 0 then
+    INITGAME
+  else
+    SPCMISC
+end;
+
+end.

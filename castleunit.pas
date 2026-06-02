@@ -1,871 +1,767 @@
-  SEGMENT PROCEDURE CASTLE;     (* P010A01 *)
-  
-    TYPE
-         BYTE = PACKED ARRAY[ 0..1] OF 0..255;
-         
-    VAR
-         CPCALLED : RECORD CASE INTEGER OF  (* COPY PROTECTION CALLED *)
-           1: (I: INTEGER);
-           2: (P: ^BYTE);
-         END;
-      
-      
-    PROCEDURE GETPASS( VAR PASSWORD: STRING);  (* P010A02 *)
-                        
-      VAR
-           UNUSEDXX : INTEGER;
-           RANDX    : INTEGER;
-           CHRCNT   : INTEGER;
-                        
-      BEGIN
-        CHRCNT := 0;
-        REPEAT
-          GETKEY;
-          IF INCHAR <> CHR( CRETURN) THEN
-            IF CHRCNT < 15 THEN
-              BEGIN
-                FOR RANDX := 0 TO (RANDOM MOD 2) DO
-                  WRITE( CHR( 88));
-                CHRCNT := CHRCNT + 1;
-                PASSWORD[ CHRCNT] := INCHAR
-              END
-            ELSE
-              WRITE( CHR(7))
-        UNTIL INCHAR = CHR( CRETURN);
-        WRITELN;
-        PASSWORD[ 0] := CHR( CHRCNT)
-      END;  (* GETPASS *)
-      
-      
-    PROCEDURE CHARINFO( CHARX: INTEGER);  (* P010A03 *)
-    
-      BEGIN
-        GOTOXY( 0, 5 + CHARX);
-        WRITE( CHR( 29));      (* ??? *)
-        WRITE( (CHARX + 1): 2);
-        WRITE( ' ');
-        WRITE( CHARACTR[ CHARX].NAME);
-        GOTOXY( 19, 5 + CHARX);
-        WRITE( COPY( SCNTOC.ALIGN[ CHARACTR[ CHARX].ALIGN], 1, 1));
-        WRITE( '-');
-        WRITE( COPY( SCNTOC.CLASS[ CHARACTR[ CHARX].CLASS], 1, 3));
-        WRITE( ' ');
-        IF CHARACTR[ CHARX].ARMORCL > - 10 THEN
-          WRITE( CHARACTR[ CHARX].ARMORCL :2)
-        ELSE
-          WRITE( 'LO');
-        WRITE( CHARACTR[ CHARX].HPLEFT :5);
-        WRITE( ' ');
-        IF CHARACTR[ CHARX].STATUS = OK THEN
-          IF CHARACTR[ CHARX].LOSTXYL.POISNAMT[ 1] <> 0 THEN
-            WRITELN( 'POISON')
-          ELSE
-            WRITELN( CHARACTR[ CHARX].HPMAX :4)
-        ELSE
-          WRITELN( SCNTOC.STATUS[ CHARACTR[ CHARX].STATUS])
-      END;
-      
-      
-    PROCEDURE DSPTITLE( TITLESTR: STRING); (* P010A04 *)
-    
-      BEGIN
-        IF CPCALLED.P^[ 0] <> 10 THEN
-          MVCURSOR( 70, 0);  (* CRASH AND BURN *)
-        GOTOXY( 0, 1);
-        WRITE( '! CASTLE');
-        WRITE( TITLESTR :30);
-        WRITE( ' !')
-      END;
-      
-      
-    PROCEDURE DSPPARTY( TITLE : STRING);  (* P010A05 *)
-    
-      VAR
-           CHARX : INTEGER;
-    
-      BEGIN
-        GOTOXY( 0, 0);
-        WRITELN( '+--------------------------------------+');
-        DSPTITLE( TITLE);
-        WRITELN;
-        WRITELN( '+----------- CURRENT PARTY: -----------+');
-        WRITELN;
-        WRITELN( ' # CHARACTER NAME  CLASS AC HITS STATUS' );
-        
-        FOR CHARX := 0 TO 5 DO
-          IF CHARX < PARTYCNT THEN
-            CHARINFO( CHARX)
-          ELSE
-            WRITELN( CHR( 29));
-        WRITELN( '+--------------------------------------+');
-        WRITE( CHR( 11))
-      END;  (* DSPPARTY *)
-      
-      
-    PROCEDURE GILGAMSH;  (*  P010A06 *)
-    
-      VAR
-           PRTYALGN : TALIGN;
-    
-    
-      PROCEDURE GETALIGN;  (* P010A07 *)
-      
-        BEGIN
-          PRTYALGN := NEUTRAL;
-          FOR LLBASE04 := 0 TO PARTYCNT - 1 DO
-            IF CHARACTR[ LLBASE04].ALIGN <> NEUTRAL THEN
-              PRTYALGN := CHARACTR[ LLBASE04].ALIGN
-        END;  (* GETALIGN *)
-        
-        
-      PROCEDURE GILGMENU;  (* P010A08 *)
-      
-        VAR
-             UNUSED : INTEGER;
-      
-      
-        BEGIN (* P010A08 *)
-          GOTOXY( 0, 13);
-          WRITE( CHR( 11));
-          WRITE( 'YOU MAY ');
-          IF PARTYCNT < 6 THEN
-            BEGIN
-              WRITE( 'A)DD A MEMBER');
-              IF PARTYCNT = 0 THEN
-                WRITELN
-              ELSE
-                WRITELN( ',');
-              WRITE( ' ' :8);
-            END;
-          IF PARTYCNT > 0 THEN
-            BEGIN
-              WRITELN( 'R)EMOVE A MEMBER,');
-              WRITE( ' ' :8);
-              WRITELN( '#) SEE A MEMBER,')
-            END
-          ELSE
-            BEGIN
-              WRITELN( CHR( 29));
-              WRITELN( CHR( 29))
-            END;
-          WRITELN;
-          WRITELN( 'OR PRESS [RETURN] TO LEAVE');
-          WRITE( CHR(11))
-        END;  (* P010A08 *)
-        
-        
-      PROCEDURE ADDPARTY;  (* P010A09 *)
-      
-        VAR
-             CHARI    : INTEGER;
-             CHARNAME : STRING;  (* MULTIPLE USES *)
-             
+unit CASTLEUNIT;
 
-        PROCEDURE EXITADDP( EXITSTR: STRING);  (* P010A09 *)
-        
-          BEGIN
-            CENTSTR( EXITSTR);
-            EXIT( ADDPARTY)
-          END;  (* EXITADDP *)
-          
-          
-        BEGIN (* ADDPARTY *)
-          GOTOXY( 0, 19);
-          WRITE( 'WHO WILL JOIN ? >');
-          GETLINE( CHARNAME);
-          IF (CHARNAME = '') OR (LENGTH( CHARNAME) > 15) THEN
-            EXIT( ADDPARTY);
-          CHARI := 0;
-          MOVELEFT( IOCACHE[ GETREC( ZCHAR, CHARI, SIZEOF( TCHAR))],
-                    CHARACTR[ PARTYCNT],
-                    SIZEOF( TCHAR));
-          WHILE (CHARI < SCNTOC.RECPERDK[ ZCHAR]) AND
-                ( (CHARNAME <> CHARACTR[ PARTYCNT].NAME) OR
-                  (CHARACTR[ PARTYCNT].STATUS = LOST) ) DO
-            BEGIN
-              CHARI := CHARI + 1;
-              MOVELEFT( IOCACHE[ GETREC( ZCHAR, CHARI, SIZEOF( TCHAR))],
-                        CHARACTR[ PARTYCNT],
-                        SIZEOF( TCHAR))
-            END;
-          IF CHARI = SCNTOC.RECPERDK[ ZCHAR] THEN
-            EXITADDP( '** WHO? **')
-          ELSE
-            IF CHARACTR[ PARTYCNT].INMAZE OR
-               (CHARACTR[ PARTYCNT].LOSTXYL.LOCATION[ 3] <> 0) THEN
-              EXITADDP( '** OUT **')
-            ELSE
-              IF (PRTYALGN <> NEUTRAL) THEN
-                IF (CHARACTR[ PARTYCNT].ALIGN <> NEUTRAL) THEN
-                  IF (PRTYALGN <> CHARACTR[ PARTYCNT].ALIGN) THEN
-                    EXITADDP( '** BAD ALIGNMENT **');
-          GOTOXY( 0, 20);
-          WRITE( 'ENTER PASSWORD  >');
-          GETPASS(  CHARNAME);
-          GOTOXY( 0, 21);
-          IF CHARNAME <> CHARACTR[ PARTYCNT].PASSWORD THEN
-            EXITADDP( '** THATS NOT IT **');
-          CHARDISK[ PARTYCNT] := CHARI;
-          CHARACTR[ PARTYCNT].INMAZE := TRUE;
-          MOVELEFT( CHARACTR[ PARTYCNT],
-                    IOCACHE[ GETRECW( ZCHAR, CHARI, SIZEOF( TCHAR))],
-                    SIZEOF( TCHAR));
-          IF IORESULT > 0 THEN
-            EXITADDP( '** WRITE-PROTECT CHEAT! **');
-          PARTYCNT := PARTYCNT + 1;
-          GETALIGN;
-          MOVELEFT( IOCACHE[ GETREC( ZZERO, 0, SIZEOF( TSCNTOC))],
-                    SCNTOC,
-                    SIZEOF( TSCNTOC));
-          CHARINFO( PARTYCNT - 1);
-        END;  (* ADDPARTY *)
-        
-        
-      PROCEDURE REMOVE;  (* P010A0B *)
-      
-        VAR
-             CHARX : INTEGER;
-             CHARI : INTEGER;
-      
-        BEGIN
-          CHARI := GETCHARX( FALSE, 'WHO WILL LEAVE');
-          IF (CHARI < 0) OR (CHARI = PARTYCNT) THEN
-            EXIT( REMOVE);
-          CHARACTR[ CHARI].INMAZE := FALSE;
-          MOVELEFT( CHARACTR[ CHARI],
-                    IOCACHE[ GETRECW( ZCHAR,
-                                      CHARDISK[ CHARI],
-                                      SIZEOF( TCHAR))],
-                    SIZEOF( TCHAR));
-          IF CHARI <> (PARTYCNT - 1) THEN
-            FOR CHARX := (CHARI + 1) TO (PARTYCNT - 1) DO
-              BEGIN
-                CHARACTR[ CHARX - 1] := CHARACTR[ CHARX];
-                CHARDISK[ CHARX - 1] := CHARDISK[ CHARX]
-              END;
-          PARTYCNT := PARTYCNT - 1;
-          GETALIGN;
-          DSPPARTY( 'TAVERN')
-        END;   (* REMOVE *)
-        
-        
-      PROCEDURE EXITCASL;  (* P010A0C *)
-      
-        VAR
-             UNUSEDX : INTEGER;
-             
-        BEGIN
-          LLBASE04 := ORD( INCHAR) - ORD( '1');
-          IF (LLBASE04 < 0) OR (LLBASE04 >= PARTYCNT) THEN
-            EXIT( EXITCASL);
-          MAZELEV := -1;
-          XGOTO := XINSPECT;
-          EXIT( CASTLE)
-        END;
-        
-        
-      BEGIN  (* GILGAMSH *)
-        GETALIGN;
-        DSPTITLE( 'TAVERN');
-        REPEAT
-          UNITCLEAR( 1);
-          GILGMENU;
-          GOTOXY( 41, 0);
-          GETKEY;
-          IF INCHAR = CHR( CRETURN) THEN
-            EXIT( GILGAMSH);
-          CASE INCHAR OF
-            'A':  IF PARTYCNT < 6 THEN
-                    ADDPARTY;
-                   
-            'R':  IF PARTYCNT > 0 THEN
-                    REMOVE;
-                   
-            '1', '2', '3', '4', '5', '6':
-                  IF PARTYCNT > 0 THEN
-                    EXITCASL;
-          END
-        UNTIL FALSE
-      END;   (* GILGAMSH *)
-      
-      
-    PROCEDURE GOBOLTAC;  (* P010A0D *)
-    
-      BEGIN
-        DSPTITLE( 'SHOP');
-        XGOTO := XBOLTAC;
-        XGOTO2 := XBOLTAC;
-        EXIT( CASTLE)
-      END;
-      
-      
-    PROCEDURE GOTEMPLE;  (* P010A0E *)
-    
-      BEGIN
-        DSPTITLE( 'TEMPLE');
-        XGOTO := XCANT;
-        XGOTO2 := XBOLTAC;
-        EXIT( CASTLE)
-      END;
-    
+{ Wizardry I — CASTLE segment.
+  Source: apple/wiz1c/CASTLE + CASTLE2.
+  Key changes from Apple Pascal:
+    - MOVELEFT record copies -> LOADTCHAR / SAVETCHAR (pointer-aware loaders)
+    - WITH CHARACTR[X] DO -> local TC := CHARACTR[X] pointer
+    - RANDOM MOD N -> Random(N)
+    - SCNTOC.ALIGN/CLASS/STATUS arrays -> SCNTOC_ALIGN/CLASS/STATUS globals
+    - CLASS field renamed XCLASS (reserved word in MP)
+    - TWIZLONG fields LOW/MID/HIGH -> XLOW/XMID/XHIGH
+    - LOSTXYL variant record -> flat LOSTXYL array
+    - GOTOXY -> MVCURSOR; UNITCLEAR -> CLRRECT
+    - GETLINE result in GTSTRING (not a parameter)
+    - SPELLSKN: ^TSPELLSKN — access as TC.SPELLSKN^[i]
+    - CPCALLED copy-protection: skipped in Atari port
+    - KEYAVAIL: Peek($02FC) <> $FF
+    - TEXP access: EXP[Ord(XCLASS)*13 + CHARLEV]^ (1-D pointer array)
+    - MP nesting limit 3: hoisted to unit level —
+        SPLPERLV, NWPRIEST, NWMAGE, MINSPCNT, MINMAG, MINPRI, SETSPELS,
+        MOREHP, TRY2LRN, TRYMAGE, TRYPRI, TRYLEARN,
+        GAINLOST, MADELEV, HEALHP }
 
-    PROCEDURE ADVNTINN;  (* P010A0F *)
-    
-      CONST
-           STABLES  = 65;
-           COTS     = 66;
-           ECONOMY  = 67;
-           MERCHANT = 68;
-           ROYAL    = 69;
-           
-      VAR
-           PARTYX : INTEGER;
-    
-    
-      PROCEDURE GETWHO;  (* P010A10 *)
-      
-        BEGIN
-          DSPTITLE( 'INN');
-          GOTOXY( 0, 13);
-          WRITE( CHR( 11));
-          PARTYX := GETCHARX( FALSE, 'WHO WILL STAY');
-          IF PARTYX < 0 THEN
-            EXIT( ADVNTINN)
-        END;
-        
-        
-      PROCEDURE INNMENU;  (* P010A11 *)
-      
-        BEGIN
-          GOTOXY( 0, 13);
-          WRITE( CHR( 11));
-          WRITE( '   WELCOME ');
-          WRITE( CHARACTR[ PARTYX].NAME);
-          WRITELN( '. WE HAVE:');
-          WRITELN;
-          WRITELN(  '[A] THE STABLES (FREE!)');
-          WRITELN(  '[B] COTS. 10 GP/WEEK.');
-          WRITELN(  '[C] ECONOMY ROOMS. 50 GP/WEEK.');
-          WRITELN(  '[D] MERCHANT SUITES. 200 GP/WEEK.');
-          WRITELN(  '[E] ROYAL SUITES. 500 GP/WEEK.');
-          WRITE(    '    OR [RETURN] TO LEAVE')
-        END;
-        
-        
-      PROCEDURE SETSPELS;  (* P010A12 *)
-      
-      
-        PROCEDURE SPLPERLV( VAR SPELGRPS: TSPELL7G;  (* P010A13 *)
-                                LEVELMOD: INTEGER;
-                                LEVMOD2:  INTEGER);
-                           
-          VAR
-               UNUSEDXX : INTEGER;
-               SPGRPI   : INTEGER;
-               SPELLCNT : INTEGER;
-        
-          BEGIN
-            SPELLCNT :=  CHARACTR[ PARTYX].CHARLEV - LEVELMOD;
-            IF SPELLCNT <=0 THEN
-              EXIT (SPLPERLV);
-            SPGRPI := 1;
-            WHILE (SPGRPI >= 1) AND (SPGRPI <= 7) AND (SPELLCNT > 0) DO
-              BEGIN
-                IF SPELLCNT > SPELGRPS[ SPGRPI] THEN
-                  SPELGRPS[ SPGRPI] := SPELLCNT;
-                SPGRPI := SPGRPI + 1;
-                SPELLCNT := SPELLCNT - LEVMOD2
-              END;
-            FOR SPGRPI := 1 TO 7 DO
-              IF SPELGRPS[ SPGRPI] > 9 THEN
-                SPELGRPS[ SPGRPI] := 9
-          END;  (* SPLPERLV *)
-          
-          
-        PROCEDURE NWPRIEST( MOD1: INTEGER;  (* P010A14 *)
-                            MOD2: INTEGER);
-        
-          BEGIN
-            SPLPERLV( CHARACTR[ PARTYX].PRIESTSP, MOD1, MOD2)
-          END;
-          
-          
-        PROCEDURE NWMAGE( MOD1: INTEGER;  (* P010A15 *)
-                          MOD2: INTEGER);
-        
-          BEGIN
-            SPLPERLV( CHARACTR[ PARTYX].MAGESP, MOD1, MOD2)
-          END;
-          
-          
-        PROCEDURE MINSPCNT( VAR SPLGRPS:  TSPELL7G;  (* P010A16 *)
-                                GROUPI:   INTEGER;
-                                LOWINDX:  INTEGER;
-                                HIGHINDX: INTEGER);
-                           
-          VAR
-               SPELLI   : INTEGER;
-               SPELKNOW : INTEGER;
-                           
-          BEGIN
-            SPELKNOW := 0;
-            FOR SPELLI := LOWINDX TO HIGHINDX DO
-              IF CHARACTR[ PARTYX].SPELLSKN[ SPELLI] THEN
-                SPELKNOW := SPELKNOW + 1;
-            SPLGRPS[ GROUPI] := SPELKNOW
-          END;
-          
-          
-        PROCEDURE MINMAG;  (* P010A17 *)
-        
-          BEGIN
-            WITH CHARACTR[ PARTYX] DO
-              BEGIN
-                MINSPCNT( MAGESP, 1,  1,  4);
-                MINSPCNT( MAGESP, 2,  5,  6);
-                MINSPCNT( MAGESP, 3,  7,  8);
-                MINSPCNT( MAGESP, 4,  9, 11);
-                MINSPCNT( MAGESP, 5, 12, 14);
-                MINSPCNT( MAGESP, 6, 15, 18);
-                MINSPCNT( MAGESP, 7, 19, 21)
-              END
-          END;
-          
-          
-        PROCEDURE MINPRI;  (* P010A18 *)
-        
-          BEGIN
-            WITH CHARACTR[ PARTYX] DO
-              BEGIN
-                MINSPCNT( PRIESTSP, 1, 22, 26);
-                MINSPCNT( PRIESTSP, 2, 27, 30);
-                MINSPCNT( PRIESTSP, 3, 31, 34);
-                MINSPCNT( PRIESTSP, 4, 35, 38);
-                MINSPCNT( PRIESTSP, 5, 39, 44);
-                MINSPCNT( PRIESTSP, 6, 45, 48);
-                MINSPCNT( PRIESTSP, 7, 49, 50)
-              END
-          END;  (* MINPRI *)
-      
-      
-        BEGIN  (* SETSPELS *)
-          MINPRI;
-          MINMAG;
-          CASE CHARACTR[ PARTYX].CLASS OF
-             PRIEST:  NWPRIEST( 0, 2);
-               MAGE:  NWMAGE(   0, 2);
-             BISHOP:  BEGIN
-                        NWPRIEST( 3, 4);
-                        NWMAGE(   0, 4)
-                      END;
-               LORD:  NWPRIEST( 3, 2);
-            SAMURAI:  NWMAGE(   3, 3)
-          END
-        END;  (* SETSPELS *)
-        
-        
-      PROCEDURE CHNEWLEV;  (* P010A19 *)
-      
-        VAR
-             EXP2NEXT : TEXP;
-             UNUSEDXX : TWIZLONG;
-             BIGLEV   : INTEGER;
-             EXPNXTLV : TWIZLONG;
-      
-      
-        PROCEDURE MADELEV;  (* P010A1A *)
-        
-          VAR
-               CHARLEV  : INTEGER;
-               NEWHPMAX : INTEGER;
-        
-        
-          FUNCTION MOREHP : INTEGER;  (* P010A1B *)
-          
-            VAR
-                 HITPTS : INTEGER;
-          
-            BEGIN
-              CASE CHARACTR[ PARTYX].CLASS OF
-                FIGHTER, LORD:         HITPTS := RANDOM MOD 10;
-                PRIEST, SAMURAI:       HITPTS := RANDOM MOD 8;
-                THIEF, BISHOP, NINJA:  HITPTS := RANDOM MOD 6;
-                MAGE:                  HITPTS := RANDOM MOD 4;
-              END;
-              
-              HITPTS := HITPTS + 1;
-              
-              CASE CHARACTR[ PARTYX].ATTRIB[ VITALITY] OF
-                3:     HITPTS := HITPTS - 2;
-                4, 5:  HITPTS := HITPTS - 1;
-                16:    HITPTS := HITPTS + 1;
-                17:    HITPTS := HITPTS + 2;
-                18:    HITPTS := HITPTS + 3;
-              END;
-              
-              IF HITPTS < 1 THEN
-                HITPTS := 1;
-              MOREHP := HITPTS
-            END;  (* MOREHP *)
-            
-            
-          PROCEDURE TRYLEARN;  (* P010A1C *)
-          
-            VAR
-                 IQPIETY : TATTRIB;
-                 LEARNED : BOOLEAN;
-          
-          
-            PROCEDURE TRY2LRN( LOWINDX:  INTEGER;  (* P010A1D *)
-                               HIGHINDX: INTEGER);
-            
-              VAR
-                   SPELLI   : INTEGER;
-                   SPLKNOWN : BOOLEAN;
-            
-              BEGIN
-                SPLKNOWN := FALSE;
-                FOR SPELLI := LOWINDX TO HIGHINDX DO
-                  SPLKNOWN := SPLKNOWN OR CHARACTR[ PARTYX].SPELLSKN[ SPELLI];
-                FOR SPELLI := LOWINDX TO HIGHINDX DO
-                  IF NOT (CHARACTR[ PARTYX].SPELLSKN[ SPELLI]) THEN
-                    IF ((RANDOM MOD 30) <
-                        CHARACTR[ PARTYX].ATTRIB[ IQPIETY]) OR
-                       (NOT SPLKNOWN) THEN
-                      BEGIN
-                        LEARNED := TRUE;
-                        SPLKNOWN := TRUE;
-                        CHARACTR[ PARTYX].SPELLSKN[ SPELLI] := TRUE
-                      END
-              END;  (* TRY2LRN *)
-              
-              
-            PROCEDURE TRYMAGE;  (* P010A1E *)
-            
-              BEGIN
-                IQPIETY := IQ;
-                WITH CHARACTR[ PARTYX] DO
-                  BEGIN
-                    IF MAGESP[ 1] > 0 THEN
-                      TRY2LRN( 1, 4);
-                    IF MAGESP[ 2] > 0 THEN
-                      TRY2LRN( 5, 6);
-                    IF MAGESP[ 3] > 0 THEN
-                      TRY2LRN( 7, 8);
-                    IF MAGESP[ 4] > 0 THEN
-                      TRY2LRN( 9, 11);
-                    IF MAGESP[ 5] > 0 THEN
-                      TRY2LRN( 12, 14);
-                    IF MAGESP[ 6] > 0 THEN
-                      TRY2LRN( 15, 18);
-                    IF MAGESP[ 7] > 0 THEN
-                      TRY2LRN( 19, 21)
-                  END
-              END;  (* TRYMAGE *)
-              
-              
-            PROCEDURE TRYPRI;  (* P010A1F *)
-            
-              BEGIN
-                IQPIETY := PIETY;
-                WITH CHARACTR[ PARTYX] DO
-                  BEGIN
-                    IF PRIESTSP[ 1] > 0 THEN
-                      TRY2LRN( 22, 26);
-                    IF PRIESTSP[ 2] > 0 THEN
-                      TRY2LRN( 27, 30);
-                    IF PRIESTSP[ 3] > 0 THEN
-                      TRY2LRN( 31, 34);
-                    IF PRIESTSP[ 4] > 0 THEN
-                      TRY2LRN( 35, 38);
-                    IF PRIESTSP[ 5] > 0 THEN
-                      TRY2LRN( 39, 44);
-                    IF PRIESTSP[ 6] > 0 THEN
-                      TRY2LRN( 45, 48);
-                    IF PRIESTSP[ 7] > 0 THEN
-                      TRY2LRN( 49, 50)
-                  END
-              END;  (* TRYPRI *)
-              
-              
-            BEGIN  (* TRYLEARN *)
-              LEARNED := FALSE;
-              TRYMAGE;
-              TRYPRI;
-              IF LEARNED THEN
-                WRITELN( 'YOU LEARNED NEW SPELLS!!!!');
-              SETSPELS
-            END;   (* TRYLEARN *)
-        
-        
-          PROCEDURE GAINLOST;  (* P010A20 *)
-          
-            VAR
-                 ATTRVAL : INTEGER;
-                 ATTRIBX : TATTRIB;
-          
-          
-            PROCEDURE PRATTRIB;  (* P010A21 *)
-            
-              BEGIN
-                CASE ATTRIBX OF
-                  STRENGTH:  WRITELN( 'STRENGTH');
-                        IQ:  WRITELN( 'I.Q.');
-                     PIETY:  WRITELN( 'PIETY');
-                  VITALITY:  WRITELN( 'VITALITY');
-                   AGILITY:  WRITELN( 'AGILITY');
-                      LUCK:  WRITELN( 'LUCK');
-                END;
-              END;  (* PRATTRIB *)
-              
-              
-            PROCEDURE OLDAGE;  (* P010A22 *)
-            
-              BEGIN
-                WRITE(  '** YOU HAVE DIED OF OLD AGE **');
-                WRITELN;
-                CHARACTR[ PARTYX].STATUS := LOST;
-                CHARACTR[ PARTYX].HPLEFT := 0;
-                EXIT( GAINLOST)
-              END;
-          
-          
-            BEGIN (* GAINLOST *)
-              FOR ATTRIBX := STRENGTH TO LUCK DO
-                BEGIN
-                  IF (RANDOM MOD 4) <> 0 THEN
-                    BEGIN
-                      ATTRVAL := CHARACTR[ PARTYX].ATTRIB[ ATTRIBX];
-                      IF (RANDOM MOD 130) <
-                         (CHARACTR[ PARTYX].AGE DIV 52) THEN
-                        IF (ATTRVAL = 18) AND
-                           ((RANDOM MOD 6) <> 4) THEN
-                          (* NOTHING *)
-                        ELSE
-                          BEGIN
-                            ATTRVAL := ATTRVAL - 1;
-                            WRITE(  'YOU LOST ');
-                            PRATTRIB;
-                            IF ATTRIBX = VITALITY THEN
-                              IF ATTRVAL = 2 THEN
-                                OLDAGE
-                          END
-                      ELSE
-                        BEGIN
-                          IF ATTRVAL <> 18 THEN
-                            BEGIN
-                              ATTRVAL := ATTRVAL + 1;
-                              WRITE(  'YOU GAINED ');
-                              PRATTRIB
-                            END
-                        END;
-                      CHARACTR[ PARTYX].ATTRIB[ ATTRIBX] := ATTRVAL
-                    END
-                END
-            END;  (* GAINLOST *)
-        
-        
-          BEGIN  (* MADELEV *)
-            WRITE( 'YOU MADE A LEVEL!');
-            WRITELN;
-            CHARACTR[ PARTYX].CHARLEV := CHARACTR[ PARTYX].CHARLEV + 1;
-            IF CHARACTR[ PARTYX].CHARLEV > CHARACTR[ PARTYX].MAXLEVAC THEN
-              CHARACTR[ PARTYX].MAXLEVAC := CHARACTR[ PARTYX].CHARLEV;
-            SETSPELS;
-            TRYLEARN;
-            GAINLOST;
-            
-            NEWHPMAX := 0;
-            FOR CHARLEV := 1 TO CHARACTR[ PARTYX].CHARLEV DO
-              NEWHPMAX := NEWHPMAX + MOREHP;
-            IF CHARACTR[ PARTYX].CLASS = SAMURAI THEN
-              NEWHPMAX := NEWHPMAX + MOREHP;
-            IF NEWHPMAX <= CHARACTR[ PARTYX].HPMAX THEN
-              NEWHPMAX := CHARACTR[ PARTYX].HPMAX + 1;
-            CHARACTR[ PARTYX].HPMAX := NEWHPMAX
-        END;  (* MADELEV *)
-        
-        
-        BEGIN (* CHNEWLEV *)
-          MOVELEFT( IOCACHE[ GETREC( ZEXP, 0, SIZEOF( TEXP))],
-                    EXP2NEXT,
-                    SIZEOF( TEXP));
-          WITH CHARACTR[ PARTYX] DO
-            BEGIN
-              IF CHARLEV <= 12 THEN
-                EXPNXTLV := EXP2NEXT[ CLASS][ CHARLEV]
-              ELSE
-                BEGIN
-                  EXPNXTLV := EXP2NEXT[ CLASS][ 12];
-                  FOR BIGLEV := 13 TO CHARLEV DO
-                    ADDLONGS( EXPNXTLV, EXP2NEXT[ CLASS][ 0])
-                END;
-                
-              IF TESTLONG( EXPNXTLV, EXP) <= 0 THEN
-                MADELEV
-              ELSE
-                BEGIN
-                  WRITE( 'YOU NEED ');
-                  SUBLONGS( EXPNXTLV, EXP);
-                  PRNTLONG( EXPNXTLV);
-                  WRITELN( ' MORE');
-                  WRITELN( 'EXPERIENCE POINTS TO MAKE LEVEL')
-                END
-            END
-        END;  (* CHNEWLEV *)
-        
-        
-      PROCEDURE TAKENAP( HPADD:   INTEGER;  (* P010A23 *)
-                         GOLDAMT: INTEGER);
-      
-        VAR
-             GOLD4NAP : TWIZLONG;
-             PAUSEX   : INTEGER;
-      
-      
-        PROCEDURE HEALHP;  (* P010A24 *)
-        
-          BEGIN
-            GOTOXY( 0, 13);
-            CHARACTR[ PARTYX].HPLEFT := CHARACTR[ PARTYX].HPLEFT + HPADD;
-            IF CHARACTR[ PARTYX].HPLEFT > CHARACTR[ PARTYX].HPMAX THEN
-              CHARACTR[ PARTYX].HPLEFT := CHARACTR[ PARTYX].HPMAX;
-            SUBLONGS( CHARACTR[ PARTYX].GOLD, GOLD4NAP);
-            WRITE( CHARACTR[ PARTYX].NAME);
-            WRITELN( ' IS HEALING UP');
-            WRITELN;
-            WRITELN;
-            WRITE( '         HIT POINTS (');
-            WRITE( CHARACTR[ PARTYX].HPLEFT);
-            WRITE( '/');
-            WRITE( CHARACTR[ PARTYX].HPMAX);
-            WRITE( ')');
-            WRITELN;
-            WRITELN;
-            WRITE( '               GOLD  ');
-            PRNTLONG( CHARACTR[ PARTYX].GOLD);
-            GOTOXY( 41, 10);
-            FOR PAUSEX := 1 TO 500 DO
-              ;
-            
-          END;  (* HEALHP *)
-          
-          
-        BEGIN  (* TAKENAP *)
-          GOLD4NAP.HIGH := 0;
-          GOLD4NAP.MID  := 0;
-          GOLD4NAP.LOW  := GOLDAMT;
-          GOTOXY( 0, 13);
-          WRITE( CHR( 11));
-          IF GOLDAMT > 0 THEN
-            WHILE (TESTLONG( CHARACTR[ PARTYX].GOLD, GOLD4NAP) >= 0) AND
-                  (CHARACTR[ PARTYX].HPLEFT < CHARACTR[ PARTYX].HPMAX) AND
-                   (NOT KEYAVAIL) DO
-              HEALHP
-          ELSE
-            BEGIN
-              WRITE( CHARACTR[ PARTYX].NAME);
-              WRITELN( ' IS NAPPING');
-            END;
-          IF KEYAVAIL THEN
-            BEGIN
-              GOTOXY( 41, 0);
-              GETKEY
-            END;
-          GOTOXY( 0, 13);
-          WRITE( CHR(11));
-          CHNEWLEV;
-          SETSPELS;
-          GOTOXY(  0, 23);
-          WRITE(  'PRESS [RETURN] TO LEAVE');
-          GOTOXY( 41, 0);
-          REPEAT
-            GETKEY
-          UNTIL INCHAR = CHR( CRETURN);
-          INCHAR := CHR( 0)
-        END;   (* TAKENAP *)
-        
-        
-      BEGIN  (* ADVNTINN *)
-        REPEAT
-          GETWHO;
-          IF CHARACTR[ PARTYX].STATUS = OK THEN
-            REPEAT
-              UNITCLEAR( 1);
-              INNMENU;
-              GOTOXY( 41, 0);
-              GETKEY;
-              CASE ORD( INCHAR) OF
-                 STABLES:  TAKENAP(  0,   0);
-                    COTS:  TAKENAP(  1,  10);
-                 ECONOMY:  TAKENAP(  3,  50);
-                MERCHANT:  TAKENAP(  7, 200);
-                   ROYAL:  TAKENAP( 10, 500);
-              END;
-              CHARINFO( PARTYX)
-            UNTIL (INCHAR = CHR( CRETURN)) OR
-                  (CHARACTR[ PARTYX].STATUS <> OK)
-        UNTIL FALSE
-      END;  (* ADVNTINN *)
-      
-      
-    PROCEDURE EXTCASTL;  (* P010A25 *)
-    
-      BEGIN
-        DSPTITLE( 'EXIT');
-        XGOTO := XEDGTOWN;
-        EXIT( CASTLE)
-      END;
-      
-      
-    PROCEDURE P010A26;  (* P010A26 *)
-    
-      BEGIN
-        GOTOXY( 0, 13);
-        WRITE( CHR( 11));
-        WRITE( ' ' : 13);
-        WRITELN( 'YOU MAY GO TO:');
-        WRITELN;
-        WRITELN( 'THE A)DVENTURER''S INN, G)ILGAMESH''');
-        WRITELN( 'TAVERN, B)OLTAC''S TRADING POST, THE');
-        WRITELN( 'TEMPLE OF C)ANT, OR THE E)DGE OF TOWN.')
-      END;
-      
-    
-    BEGIN  (* CASTLE  P010A01 *)
-      ACMOD2   := 0;
-      LIGHT    := 0;
-      CHSTALRM := 0;
-      
-      CPCALLED.I := 1145;  (* $0479  SLOT#1 RAM SPACE *)
-      
-      ATTK012  := 0;
-      FIZZLES  := 0;
-      TEXTMODE;
-      IF CPCALLED.P^[ 0] <> 10 THEN
-        MVCURSOR( 70, 0);  (* CRASH AND BURN *)
-      IF XGOTO2 <> XBOLTAC THEN
-        DSPPARTY( '');
-      XGOTO2 := XGILGAMS;
-      IF XGOTO = XGILGAMS THEN
-        GILGAMSH;
-      REPEAT
-        DSPTITLE( 'MARKET');
-        P010A26;
-        REPEAT
-          REPEAT
-            GOTOXY( 41, 0);
-            GETKEY
-          UNTIL (INCHAR = 'A') OR (INCHAR = 'G') OR (INCHAR = 'B') OR
-                (INCHAR = 'C') OR (INCHAR = 'E');
-        UNTIL (PARTYCNT > 0) OR (INCHAR = 'E') OR (INCHAR = 'G');
-              
-        CASE INCHAR OF
-          'G':  GILGAMSH;
-          'A':  ADVNTINN;
-          'C':  GOTEMPLE;
-          'B':  GOBOLTAC;
-          'E':  EXTCASTL
-        END
-      UNTIL FALSE
-    END;   (* CASTLE  P010A01 *)
+interface
+
+uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+
+procedure CASTLE;
+
+implementation
+
+{ ── Unit-level vars shared by hoisted sub-procedures ─────────────────────── }
+var
+  _partyx   : SmallInt;   { ADVNTINN's active-character index }
+  _hpadd    : SmallInt;   { TAKENAP's HPADD param — used by hoisted HEALHP }
+  _gold4nap : TWIZLONG;   { TAKENAP's payment counter — used by hoisted HEALHP }
+  _iqpiety  : TATTRIB;    { TRYLEARN's active attribute — used by TRY2LRN }
+  _learned  : Boolean;    { TRYLEARN's new-spell flag — written by TRY2LRN }
+  _attribx  : TATTRIB;    { GAINLOST's attribute iterator — used by inline PRATTRIB }
+
+{ ── var-param helpers (MP auto-deref type-resolution bug — see bug5) ──────── }
+
+function GETNAME_C( var C: TCHAR): string;
+begin GETNAME_C := C.NAME end;
+
+function GETGOLD_C( var C: TCHAR): TWIZLONG;
+begin GETGOLD_C := C.GOLD end;
+
+procedure SETGOLD_C( var C: TCHAR; G: TWIZLONG);
+begin
+  C.GOLD.XLOW  := G.XLOW;
+  C.GOLD.XMID  := G.XMID;
+  C.GOLD.XHIGH := G.XHIGH
+end;
+
+{ ── Hoisted level-4+ procedures (ADVNTINN sub-tree) ──────────────────────── }
+
+{ --- SETSPELS helpers --- }
+
+procedure SPLPERLV( var SPELGRPS: TSPELL7G; LEVELMOD, LEVMOD2: SmallInt);
+var SPGRPI, SPELLCNT : SmallInt;
+begin
+  SPELLCNT := CHARACTR[ _partyx].CHARLEV - LEVELMOD;
+  if SPELLCNT <= 0 then exit;
+  SPGRPI := 1;
+  while (SPGRPI >= 1) and (SPGRPI <= 7) and (SPELLCNT > 0) do
+    begin
+      if SPELLCNT > SPELGRPS[ SPGRPI] then
+        SPELGRPS[ SPGRPI] := SPELLCNT;
+      SPGRPI   := SPGRPI   + 1;
+      SPELLCNT := SPELLCNT - LEVMOD2
+    end;
+  for SPGRPI := 1 to 7 do
+    if SPELGRPS[ SPGRPI] > 9 then
+      SPELGRPS[ SPGRPI] := 9
+end;
+
+procedure NWPRIEST( MOD1, MOD2: SmallInt);
+var TC : ^TCHAR;
+begin
+  TC := CHARACTR[ _partyx];
+  SPLPERLV( TC.PRIESTSP, MOD1, MOD2)
+end;
+
+procedure NWMAGE( MOD1, MOD2: SmallInt);
+var TC : ^TCHAR;
+begin
+  TC := CHARACTR[ _partyx];
+  SPLPERLV( TC.MAGESP, MOD1, MOD2)
+end;
+
+procedure MINSPCNT( var SPLGRPS: TSPELL7G; GROUPI, LOWINDX, HIGHINDX: SmallInt);
+var SPELLI, SPELKNOW : SmallInt; TC : ^TCHAR; SKNS : ^TSPELLSKN;
+begin
+  TC       := CHARACTR[ _partyx];
+  SKNS     := TC.SPELLSKN;
+  SPELKNOW := 0;
+  for SPELLI := LOWINDX to HIGHINDX do
+    if SKNS^[ SPELLI] then
+      SPELKNOW := SPELKNOW + 1;
+  SPLGRPS[ GROUPI] := SPELKNOW
+end;
+
+procedure MINMAG;
+var TC : ^TCHAR;
+begin
+  TC := CHARACTR[ _partyx];
+  MINSPCNT( TC.MAGESP, 1,  1,  4);
+  MINSPCNT( TC.MAGESP, 2,  5,  6);
+  MINSPCNT( TC.MAGESP, 3,  7,  8);
+  MINSPCNT( TC.MAGESP, 4,  9, 11);
+  MINSPCNT( TC.MAGESP, 5, 12, 14);
+  MINSPCNT( TC.MAGESP, 6, 15, 18);
+  MINSPCNT( TC.MAGESP, 7, 19, 21)
+end;
+
+procedure MINPRI;
+var TC : ^TCHAR;
+begin
+  TC := CHARACTR[ _partyx];
+  MINSPCNT( TC.PRIESTSP, 1, 22, 26);
+  MINSPCNT( TC.PRIESTSP, 2, 27, 30);
+  MINSPCNT( TC.PRIESTSP, 3, 31, 34);
+  MINSPCNT( TC.PRIESTSP, 4, 35, 38);
+  MINSPCNT( TC.PRIESTSP, 5, 39, 44);
+  MINSPCNT( TC.PRIESTSP, 6, 45, 48);
+  MINSPCNT( TC.PRIESTSP, 7, 49, 50)
+end;
+
+procedure SETSPELS;
+begin
+  MINPRI;
+  MINMAG;
+  case TCLASS( CHARACTR[ _partyx].XCLASS) of
+     PRIEST:  NWPRIEST( 0, 2);
+       MAGE:  NWMAGE(   0, 2);
+     BISHOP:  begin NWPRIEST( 3, 4); NWMAGE( 0, 4) end;
+       LORD:  NWPRIEST( 3, 2);
+    SAMURAI:  NWMAGE(   3, 3)
+  end
+end;
+
+{ --- MOREHP: HP roll for new level --- }
+
+function MOREHP: SmallInt;
+var HITPTS : SmallInt; TC : ^TCHAR;
+begin
+  TC := CHARACTR[ _partyx];
+  case TCLASS( TC.XCLASS) of
+    FIGHTER, LORD:         HITPTS := Random( 10);
+    PRIEST,  SAMURAI:      HITPTS := Random(  8);
+    THIEF,   BISHOP, NINJA: HITPTS := Random(  6);
+    MAGE:                  HITPTS := Random(  4);
+  end;
+  HITPTS := HITPTS + 1;
+  case TC.ATTRIB[ Byte( VITALITY)] of
+    3:         HITPTS := HITPTS - 2;
+    4, 5:      HITPTS := HITPTS - 1;
+    16:        HITPTS := HITPTS + 1;
+    17:        HITPTS := HITPTS + 2;
+    18:        HITPTS := HITPTS + 3;
+  end;
+  if HITPTS < 1 then HITPTS := 1;
+  MOREHP := HITPTS
+end;
+
+{ --- Spell learning (TRYLEARN sub-tree) --- }
+
+procedure TRY2LRN( LOWINDX, HIGHINDX: SmallInt);
+var SPELLI : SmallInt; SPLKNOWN : Boolean; TC : ^TCHAR; SKNS : ^TSPELLSKN;
+begin
+  TC       := CHARACTR[ _partyx];
+  SKNS     := TC.SPELLSKN;
+  SPLKNOWN := false;
+  for SPELLI := LOWINDX to HIGHINDX do
+    SPLKNOWN := SPLKNOWN or SKNS^[ SPELLI];
+  for SPELLI := LOWINDX to HIGHINDX do
+    if not SKNS^[ SPELLI] then
+      if (Random( 30) < TC.ATTRIB[ Byte( _iqpiety)]) or (not SPLKNOWN) then
+        begin
+          _learned      := true;
+          SPLKNOWN      := true;
+          SKNS^[ SPELLI] := true
+        end
+end;
+
+procedure TRYMAGE;
+var TC : ^TCHAR;
+begin
+  _iqpiety := IQ;
+  TC := CHARACTR[ _partyx];
+  if TC.MAGESP[ 1] > 0 then TRY2LRN(  1,  4);
+  if TC.MAGESP[ 2] > 0 then TRY2LRN(  5,  6);
+  if TC.MAGESP[ 3] > 0 then TRY2LRN(  7,  8);
+  if TC.MAGESP[ 4] > 0 then TRY2LRN(  9, 11);
+  if TC.MAGESP[ 5] > 0 then TRY2LRN( 12, 14);
+  if TC.MAGESP[ 6] > 0 then TRY2LRN( 15, 18);
+  if TC.MAGESP[ 7] > 0 then TRY2LRN( 19, 21)
+end;
+
+procedure TRYPRI;
+var TC : ^TCHAR;
+begin
+  _iqpiety := PIETY;
+  TC := CHARACTR[ _partyx];
+  if TC.PRIESTSP[ 1] > 0 then TRY2LRN( 22, 26);
+  if TC.PRIESTSP[ 2] > 0 then TRY2LRN( 27, 30);
+  if TC.PRIESTSP[ 3] > 0 then TRY2LRN( 31, 34);
+  if TC.PRIESTSP[ 4] > 0 then TRY2LRN( 35, 38);
+  if TC.PRIESTSP[ 5] > 0 then TRY2LRN( 39, 44);
+  if TC.PRIESTSP[ 6] > 0 then TRY2LRN( 45, 48);
+  if TC.PRIESTSP[ 7] > 0 then TRY2LRN( 49, 50)
+end;
+
+procedure TRYLEARN;
+begin
+  _learned := false;
+  TRYMAGE;
+  TRYPRI;
+  if _learned then
+    WriteLn( 'YOU LEARNED NEW SPELLS!!!!');
+  SETSPELS
+end;
+
+{ --- Attribute gain/loss --- }
+
+procedure GAINLOST;
+var ATTRVAL : SmallInt; TC : ^TCHAR;
+begin
+  TC := CHARACTR[ _partyx];
+  for _attribx := STRENGTH to LUCK do
+    begin
+      if Random( 4) <> 0 then
+        begin
+          ATTRVAL := TC.ATTRIB[ Byte( _attribx)];
+          if Random( 130) < (TC.AGE div 52) then
+            begin
+              if (ATTRVAL = 18) and (Random( 6) <> 4) then
+                { nothing }
+              else
+                begin
+                  ATTRVAL := ATTRVAL - 1;
+                  Write( 'YOU LOST ');
+                  { inline PRATTRIB }
+                  case _attribx of
+                    STRENGTH: WriteLn( 'STRENGTH');
+                          IQ: WriteLn( 'I.Q.');
+                       PIETY: WriteLn( 'PIETY');
+                    VITALITY: WriteLn( 'VITALITY');
+                     AGILITY: WriteLn( 'AGILITY');
+                        LUCK: WriteLn( 'LUCK');
+                  end;
+                  if _attribx = VITALITY then
+                    if ATTRVAL = 2 then
+                      begin
+                        Write( '** YOU HAVE DIED OF OLD AGE **'); WriteLn;
+                        TC.STATUS := LOST;
+                        TC.HPLEFT := 0;
+                        TC.ATTRIB[ Byte( _attribx)] := ATTRVAL;
+                        exit   { exits GAINLOST }
+                      end
+                end
+            end
+          else
+            begin
+              if ATTRVAL <> 18 then
+                begin
+                  ATTRVAL := ATTRVAL + 1;
+                  Write( 'YOU GAINED ');
+                  case _attribx of
+                    STRENGTH: WriteLn( 'STRENGTH');
+                          IQ: WriteLn( 'I.Q.');
+                       PIETY: WriteLn( 'PIETY');
+                    VITALITY: WriteLn( 'VITALITY');
+                     AGILITY: WriteLn( 'AGILITY');
+                        LUCK: WriteLn( 'LUCK');
+                  end
+                end
+            end;
+          TC.ATTRIB[ Byte( _attribx)] := ATTRVAL
+        end
+    end
+end;
+
+{ --- Level advancement --- }
+
+procedure MADELEV;
+var CHARLEV, NEWHPMAX : SmallInt; TC : ^TCHAR;
+begin
+  TC := CHARACTR[ _partyx];
+  Write( 'YOU MADE A LEVEL!'); WriteLn;
+  TC.CHARLEV := TC.CHARLEV + 1;
+  if TC.CHARLEV > TC.MAXLEVAC then
+    TC.MAXLEVAC := TC.CHARLEV;
+  SETSPELS;
+  TRYLEARN;
+  GAINLOST;
+  NEWHPMAX := 0;
+  TC := CHARACTR[ _partyx];   { refresh after GAINLOST may have changed TC.HPMAX }
+  for CHARLEV := 1 to TC.CHARLEV do
+    NEWHPMAX := NEWHPMAX + MOREHP;
+  if Byte( TC.XCLASS) = Byte( SAMURAI) then
+    NEWHPMAX := NEWHPMAX + MOREHP;
+  if NEWHPMAX <= TC.HPMAX then
+    NEWHPMAX := TC.HPMAX + 1;
+  TC.HPMAX := NEWHPMAX
+end;
+
+{ --- Inn healing loop body --- }
+
+procedure HEALHP;
+var PAUSEX : SmallInt; TC : ^TCHAR; G : TWIZLONG;
+begin
+  MVCURSOR( 0, 13);
+  TC := CHARACTR[ _partyx];
+  TC.HPLEFT := TC.HPLEFT + _hpadd;
+  if TC.HPLEFT > TC.HPMAX then
+    TC.HPLEFT := TC.HPMAX;
+  G := GETGOLD_C( CHARACTR[ _partyx]^);
+  SUBLONGS( G, _gold4nap);
+  SETGOLD_C( CHARACTR[ _partyx]^, G);
+  Write( TC.NAME);
+  WriteLn( ' IS HEALING UP');
+  WriteLn;
+  WriteLn;
+  Write( '         HIT POINTS (');
+  Write( TC.HPLEFT: 1);
+  Write( '/');
+  Write( TC.HPMAX: 1);
+  Write( ')');
+  WriteLn;
+  WriteLn;
+  Write( '               GOLD  ');
+  G := GETGOLD_C( CHARACTR[ _partyx]^);
+  PRNTLONG( G);
+  MVCURSOR( 41, 10);
+  for PAUSEX := 1 to 500 do
+    begin end
+end;
+
+
+{ ── CASTLE segment ────────────────────────────────────────────────────────── }
+
+procedure CASTLE;
+
+
+  procedure GETPASS( var PASSWORD: string);
+  var RANDX, CHRCNT : SmallInt;
+  begin
+    CHRCNT := 0;
+    repeat
+      GETKEY;
+      if INCHAR <> Chr( CRETURN) then
+        if CHRCNT < 15 then
+          begin
+            for RANDX := 0 to Random( 2) do
+              Write( Chr( 88));   { 'X' — password echo mask }
+            CHRCNT := CHRCNT + 1;
+            PASSWORD[ CHRCNT] := INCHAR
+          end
+        else
+          Write( Chr( 7))
+    until INCHAR = Chr( CRETURN);
+    WriteLn;
+    PASSWORD[ 0] := Chr( CHRCNT)
+  end;
+
+
+  procedure CHARINFO( CHARX: SmallInt);
+  var TC : ^TCHAR;
+  begin
+    TC := CHARACTR[ CHARX];
+    MVCURSOR( 0, 5 + CHARX);
+    Write( ' ');
+    Write( (CHARX + 1): 2);
+    Write( ' ');
+    Write( TC.NAME);
+    MVCURSOR( 19, 5 + CHARX);
+    Write( Copy( SCNTOC_ALIGN[ TC.ALIGN], 1, 1));
+    Write( '-');
+    Write( Copy( SCNTOC_CLASS[ TC.XCLASS], 1, 3));
+    Write( ' ');
+    if TC.ARMORCL > -10 then
+      Write( TC.ARMORCL: 2)
+    else
+      Write( 'LO');
+    Write( TC.HPLEFT: 5);
+    Write( ' ');
+    if TC.STATUS = OK then
+      if TC.LOSTXYL[ 1] <> 0 then
+        WriteLn( 'POISON')
+      else
+        WriteLn( TC.HPMAX: 4)
+    else
+      WriteLn( SCNTOC_STATUS[ TC.STATUS])
+  end;
+
+
+  procedure DSPTITLE( TITLESTR: string);
+  begin
+    MVCURSOR( 0, 1);
+    Write( '! CASTLE');
+    Write( TITLESTR);
+    Write( ' !')
+  end;
+
+
+  procedure DSPPARTY( TITLE: string);
+  var CHARX : SmallInt;
+  begin
+    MVCURSOR( 0, 0);
+    WriteLn( '+--------------------------------------+');
+    DSPTITLE( TITLE);
+    WriteLn;
+    WriteLn( '+----------- CURRENT PARTY: -----------+');
+    WriteLn;
+    WriteLn( ' # CHARACTER NAME  CLASS AC HITS STATUS');
+    for CHARX := 0 to 5 do
+      if CHARX < PARTYCNT then
+        CHARINFO( CHARX)
+      else
+        WriteLn( ' ');
+    WriteLn( '+--------------------------------------+');
+    Write( Chr( 11))
+  end;
+
+
+  procedure GOBOLTAC;
+  begin
+    DSPTITLE( 'SHOP');
+    XGOTO  := XBOLTAC;
+    XGOTO2 := XBOLTAC;
+    exit   { EXIT(CASTLE) }
+  end;
+
+
+  procedure GOTEMPLE;
+  begin
+    DSPTITLE( 'TEMPLE');
+    XGOTO  := XCANT;
+    XGOTO2 := XBOLTAC;
+    exit   { EXIT(CASTLE) }
+  end;
+
+
+  procedure EXTCASTL;
+  begin
+    DSPTITLE( 'EXIT');
+    XGOTO := XEDGTOWN;
+    exit   { EXIT(CASTLE) }
+  end;
+
+
+  procedure P010A26;
+  begin
+    MVCURSOR( 0, 13);
+    Write( Chr( 11));
+    Write( '             ');
+    WriteLn( 'YOU MAY GO TO:');
+    WriteLn;
+    WriteLn( 'THE A)DVENTURER''S INN, G)ILGAMESH''');
+    WriteLn( 'TAVERN, B)OLTAC''S TRADING POST, THE');
+    WriteLn( 'TEMPLE OF C)ANT, OR THE E)DGE OF TOWN.')
+  end;
+
+
+  procedure GILGAMSH;
+  var PRTYALGN : TALIGN;
+
+
+    procedure GETALIGN;
+    var LLBASE : SmallInt; ALIGNB : Byte;
+    begin
+      PRTYALGN := NEUTRAL;
+      for LLBASE := 0 to PARTYCNT - 1 do
+        begin
+          ALIGNB := CHARACTR[ LLBASE].ALIGN;   { auto-deref → BYTE }
+          if ALIGNB <> Byte( NEUTRAL) then
+            PRTYALGN := TALIGN( ALIGNB)
+        end
+    end;
+
+
+    procedure GILGMENU;
+    begin
+      MVCURSOR( 0, 13);
+      Write( Chr( 11));
+      Write( 'YOU MAY ');
+      if PARTYCNT < 6 then
+        begin
+          Write( 'A)DD A MEMBER');
+          if PARTYCNT = 0 then WriteLn( '') else WriteLn( ',');
+          Write( '        ')
+        end;
+      if PARTYCNT > 0 then
+        begin
+          WriteLn( 'R)EMOVE A MEMBER,');
+          Write( '        ');
+          WriteLn( '#) SEE A MEMBER,')
+        end
+      else
+        begin
+          WriteLn( ' ');
+          WriteLn( ' ')
+        end;
+      WriteLn;
+      WriteLn( 'OR PRESS [RETURN] TO LEAVE');
+      Write( Chr( 11))
+    end;
+
+
+    procedure ADDPARTY;
+    var CHARI : SmallInt; CHARNAME : string; TC_SLOT : ^TCHAR;
+    begin
+      MVCURSOR( 0, 19);
+      Write( 'WHO WILL JOIN ? >');
+      GETLINE;
+      CHARNAME := GTSTRING;
+      if (CHARNAME = '') or (Length( CHARNAME) > 15) then exit;
+      CHARI    := 0;
+      LOADTCHAR( CHARI, CHARACTR[ PARTYCNT]^);
+      TC_SLOT := CHARACTR[ PARTYCNT];
+      while (CHARI < SCNTOC.RECPERDK[ ZCHAR]) and
+            ((CHARNAME <> TC_SLOT.NAME) or
+             (TC_SLOT.STATUS = LOST)) do
+        begin
+          CHARI := CHARI + 1;
+          LOADTCHAR( CHARI, CHARACTR[ PARTYCNT]^)
+        end;
+      if CHARI = SCNTOC.RECPERDK[ ZCHAR] then
+        begin CENTSTR( '** WHO? **'); exit end;
+      if TC_SLOT.INMAZE or (TC_SLOT.LOSTXYL[ 3] <> 0) then
+        begin CENTSTR( '** OUT **'); exit end;
+      if PRTYALGN <> NEUTRAL then
+        if TC_SLOT.ALIGN <> NEUTRAL then
+          if PRTYALGN <> TC_SLOT.ALIGN then
+            begin CENTSTR( '** BAD ALIGNMENT **'); exit end;
+      MVCURSOR( 0, 20);
+      Write( 'ENTER PASSWORD  >');
+      GETPASS( CHARNAME);
+      MVCURSOR( 0, 21);
+      if CHARNAME <> TC_SLOT.PASSWORD then
+        begin CENTSTR( '** THATS NOT IT **'); exit end;
+      CHARDISK[ PARTYCNT] := CHARI;
+      TC_SLOT.INMAZE := true;
+      SAVETCHAR( CHARI, CHARACTR[ PARTYCNT]^);
+      PARTYCNT := PARTYCNT + 1;
+      GETALIGN;
+      LLBASE04 := GETREC( ZZERO, 0, SizeOf( TSCNTOC));
+      LOADSCNTOC;
+      CHARINFO( PARTYCNT - 1)
+    end;
+
+
+    procedure REMOVE;
+    var CHARX, CHARI : SmallInt;
+    begin
+      CHARI := GETCHARX( false, 'WHO WILL LEAVE');
+      if (CHARI < 0) or (CHARI >= PARTYCNT) then exit;
+      CHARACTR[ CHARI].INMAZE := false;
+      SAVETCHAR( CHARDISK[ CHARI], CHARACTR[ CHARI]^);
+      if CHARI <> (PARTYCNT - 1) then
+        for CHARX := (CHARI + 1) to (PARTYCNT - 1) do
+          begin
+            CHARACTR[ CHARX - 1] := CHARACTR[ CHARX];
+            CHARDISK[ CHARX - 1] := CHARDISK[ CHARX]
+          end;
+      PARTYCNT := PARTYCNT - 1;
+      GETALIGN;
+      DSPPARTY( 'TAVERN')
+    end;
+
+
+    procedure EXITCASL;
+    begin
+      LLBASE04 := Ord( INCHAR) - Ord( '1');
+      if (LLBASE04 < 0) or (LLBASE04 >= PARTYCNT) then exit;
+      MAZELEV := -1;
+      XGOTO   := XINSPECT;
+      exit   { EXIT(CASTLE) — cascades through GILGAMSH }
+    end;
+
+
+  begin  { GILGAMSH }
+    GETALIGN;
+    DSPTITLE( 'TAVERN');
+    repeat
+      CLRRECT( 0, 13, 40, 11);
+      GILGMENU;
+      MVCURSOR( 41, 0);
+      GETKEY;
+      if INCHAR = Chr( CRETURN) then exit;
+      case INCHAR of
+        'A': if PARTYCNT < 6 then ADDPARTY;
+        'R': if PARTYCNT > 0 then REMOVE;
+        '1', '2', '3', '4', '5', '6':
+             if PARTYCNT > 0 then EXITCASL
+      end
+    until false
+  end;  { GILGAMSH }
+
+
+  procedure ADVNTINN;
+
+
+    procedure GETWHO;
+    begin
+      DSPTITLE( 'INN');
+      MVCURSOR( 0, 13);
+      Write( Chr( 11));
+      _partyx := GETCHARX( false, 'WHO WILL STAY');
+      if _partyx < 0 then exit
+    end;
+
+
+    procedure INNMENU;
+    var TC : ^TCHAR;
+    begin
+      TC := CHARACTR[ _partyx];
+      MVCURSOR( 0, 13);
+      Write( Chr( 11));
+      Write( '   WELCOME ');
+      Write( TC.NAME);
+      WriteLn( '. WE HAVE:');
+      WriteLn;
+      WriteLn( '[A] THE STABLES (FREE!)');
+      WriteLn( '[B] COTS. 10 GP/WEEK.');
+      WriteLn( '[C] ECONOMY ROOMS. 50 GP/WEEK.');
+      WriteLn( '[D] MERCHANT SUITES. 200 GP/WEEK.');
+      WriteLn( '[E] ROYAL SUITES. 500 GP/WEEK.');
+      Write(   '    OR [RETURN] TO LEAVE')
+    end;
+
+
+    procedure CHNEWLEV;
+    var EXP2NEXT : TEXP;
+         BIGLEV  : SmallInt;
+         EXPNXTLV: TWIZLONG;
+         CLSIDX  : SmallInt;
+         TC      : ^TCHAR;
+    var  EXI     : SmallInt;
+    begin
+      { AP: MOVELEFT from IOCACHE; stub: allocate zeroed entries }
+      for EXI := 0 to 103 do GetMem( EXP2NEXT[ EXI]);
+      TC := CHARACTR[ _partyx];
+      CLSIDX := Ord( TCLASS( TC.XCLASS)) * 13;
+      if TC.CHARLEV <= 12 then
+        EXPNXTLV := EXP2NEXT[ CLSIDX + TC.CHARLEV]^
+      else
+        begin
+          EXPNXTLV := EXP2NEXT[ CLSIDX + 12]^;
+          for BIGLEV := 13 to TC.CHARLEV do
+            ADDLONGS( EXPNXTLV, EXP2NEXT[ CLSIDX]^)
+        end;
+      if TESTLONG( EXPNXTLV, TC.EXP) <= 0 then
+        MADELEV
+      else
+        begin
+          Write( 'YOU NEED ');
+          SUBLONGS( EXPNXTLV, TC.EXP);
+          PRNTLONG( EXPNXTLV);
+          WriteLn( ' MORE');
+          WriteLn( 'EXPERIENCE POINTS TO MAKE LEVEL')
+        end
+    end;
+
+
+    procedure TAKENAP( HPADD, GOLDAMT: SmallInt);
+    var TC : ^TCHAR; G : TWIZLONG;
+    begin
+      _hpadd           := HPADD;
+      _gold4nap.XHIGH  := 0;
+      _gold4nap.XMID   := 0;
+      _gold4nap.XLOW   := GOLDAMT;
+      MVCURSOR( 0, 13);
+      Write( Chr( 11));
+      TC := CHARACTR[ _partyx];
+      if GOLDAMT > 0 then
+        begin
+          G := GETGOLD_C( CHARACTR[ _partyx]^);
+          while (TESTLONG( G, _gold4nap) >= 0) and
+                (TC.HPLEFT < TC.HPMAX) and
+                (Peek( $02FC) = $FF) do    { $FF = no key available }
+            begin
+              HEALHP;
+              G := GETGOLD_C( CHARACTR[ _partyx]^)
+            end
+        end
+      else
+        begin
+          Write( TC.NAME);
+          WriteLn( ' IS NAPPING')
+        end;
+      if Peek( $02FC) <> $FF then
+        begin
+          MVCURSOR( 41, 0);
+          GETKEY
+        end;
+      MVCURSOR( 0, 13);
+      Write( Chr( 11));
+      CHNEWLEV;
+      SETSPELS;
+      MVCURSOR( 0, 23);
+      Write( 'PRESS [RETURN] TO LEAVE');
+      MVCURSOR( 41, 0);
+      repeat GETKEY until INCHAR = Chr( CRETURN);
+      INCHAR := Chr( 0)
+    end;
+
+
+  begin  { ADVNTINN }
+    repeat
+      GETWHO;
+      if Byte( CHARACTR[ _partyx].STATUS) = 0 then   { OK = 0 }
+        repeat
+          CLRRECT( 0, 13, 40, 11);
+          INNMENU;
+          MVCURSOR( 41, 0);
+          GETKEY;
+          case Byte( Ord( INCHAR)) of
+            65: TAKENAP(  0,   0);   { 'A' STABLES  }
+            66: TAKENAP(  1,  10);   { 'B' COTS     }
+            67: TAKENAP(  3,  50);   { 'C' ECONOMY  }
+            68: TAKENAP(  7, 200);   { 'D' MERCHANT }
+            69: TAKENAP( 10, 500);   { 'E' ROYAL    }
+          end;
+          CHARINFO( _partyx)
+        until (INCHAR = Chr( CRETURN)) or
+              (Byte( CHARACTR[ _partyx].STATUS) <> 0)
+    until false
+  end;  { ADVNTINN }
+
+
+begin  { CASTLE }
+  ACMOD2   := 0;
+  LIGHT    := 0;
+  CHSTALRM := 0;
+  { CPCALLED copy-protection: skipped in Atari port }
+  ATTK012 := 0;
+  FIZZLES := 0;
+  TEXTMODE;
+  if XGOTO2 <> XBOLTAC then
+    DSPPARTY( '');
+  XGOTO2 := XGILGAMS;
+  if XGOTO = XGILGAMS then
+    GILGAMSH;
+  repeat
+    DSPTITLE( 'MARKET');
+    P010A26;
+    repeat
+      repeat
+        MVCURSOR( 41, 0);
+        GETKEY
+      until (INCHAR = 'A') or (INCHAR = 'G') or (INCHAR = 'B') or
+            (INCHAR = 'C') or (INCHAR = 'E');
+    until (PARTYCNT > 0) or (INCHAR = 'E') or (INCHAR = 'G');
+    case INCHAR of
+      'G': GILGAMSH;
+      'A': ADVNTINN;
+      'C': GOTEMPLE;
+      'B': GOBOLTAC;
+      'E': EXTCASTL
+    end
+  until false
+end;  { CASTLE }
+
+end.

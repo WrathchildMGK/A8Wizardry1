@@ -1,1200 +1,1150 @@
-SEGMENT PROCEDURE UTILITIE;  (* P010101 *)
+unit UTILUNIT;
 
-  VAR
-       CHARI : INTEGER;
-       CHARX : INTEGER;  (* MULTIPLE USES   SVBASE04, SAVBASE4, ETC.
-                                            SAVECAST, ETC. *)
-       EQUIPALL : BOOLEAN;
+{ Source: apple/wiz1c/UTILITIE + apple/wiz1b/UTILITIE2 + apple/wiz1b/UTILITIE3
+
+  Translation notes:
+    - SEGMENT PROCEDURE UTILITIE -> unit procedure UTILITIE
+    - EXIT(UTILITIE) -> _done := true; exit (propagated up call chain)
+    - EXIT(PROC) for current procedure -> plain exit
+    - EXIT(FIGHTS) from FINDSPOT -> _ffail flag in FIGHTS
+    - WITH CHARACTR[X] DO -> TC := CHARACTR[X]; TC.FIELD
+    - POSS.POSSESS[I].FIELD -> PP := TC.POSS.POSSESS[I]; PP.FIELD
+    - CLASS -> XCLASS (reserved word in MP)
+    - LOSTXYL.LOCATION[1..3] / POISNAMT[1] -> LOSTXYL[1..3]
+    - MOVELEFT TMAZE   -> LOADTMAZE
+    - MOVELEFT TCHAR   -> LOADTCHAR
+    - MOVELEFT TOBJREC -> LOADOBJREC
+    - MOVELEFT TSCNTOC -> (SCNTOC is already a global; reload stubbed)
+    - RANDOM MOD N -> Random(N)
+    - GOTOXY(X,Y)  -> MVCURSOR(X,Y)
+    - BASE12.GOTOX -> XGOTO2 (CAMP sets XGOTO2 before jumping to XCAMPSTF)
+    - UNITREAD/UNITWRITE -> stubbed (disk I/O not yet wired up)
+    - FOR OBJI := WEAPON TO GAUNTLET -> integer loop with TOBJTYPE cast
+    - SUCC(ATTRX) on enum -> TATTRIB(Byte(ATTRX)+1) if MP fails; try SUCC first
+}
+
+interface
+
+uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+
+procedure UTILITIE;
+
+implementation
+
+var
+  _done   : Boolean;
+  CHARI   : SmallInt;   { shared across EQUIPCHR/EQUIP6/EQUIP1 }
+  CHARX   : SmallInt;   { shared across RDSPELLS/IDITEM/KANDIFND/DUMAPIC/MALOR }
+  EQUIPALL : Boolean;
+
+{ Unit-level helper: assign TSTATUS through ^TCHAR pointer.
+  Required because enum constants inside deeply nested procedures (or inside
+  case Byte(X) of arms) are re-typed as Byte in MP, causing E6 on direct
+  assignment to ENUM-typed fields. Passing as a typed parameter restores the
+  correct enum type. }
+procedure SETSTAT( TC: PTCHAR; ST: TSTATUS);
+begin TC.STATUS := ST end;
+
+procedure SETXCLS( TC: PTCHAR; CL: TCLASS);
+begin TC.XCLASS := CL end;
 
 
-  PROCEDURE RDSPELLS;  (* P010102 *)
-  
-    CONST
-         SCNMAGE = 4;
-         SCNPRST = 5;
-  
-    VAR
-         SPELLGRP : INTEGER;
-         SPLISTX  : INTEGER;
-         DSKSPLNM : INTEGER;
-         SPELLX   : INTEGER;
-         
-         
-    PROCEDURE LISTSPLS;  (* P010103 *)
-    
-      VAR
-           SPELLNM : STRING;
-           CHPTR   : INTEGER;
-           
-           
-      PROCEDURE PRSPELL( SPELLNM: STRING);  (* P010104 *)
-      
-        BEGIN
-          IF SPELLNM[ 1] = '*' THEN
-            BEGIN
-              SPELLNM := COPY( SPELLNM, 2, LENGTH( SPELLNM) - 1);
-              SPLISTX := SPLISTX + 1
-            END;
-          GOTOXY( 10 * (SPLISTX DIV 20), 2 + SPLISTX MOD 20);
-          IF CHARACTR[ CHARX].SPELLSKN[ SPELLX] THEN
-            BEGIN
-              WRITE( SPELLNM);
-              SPLISTX := SPLISTX + 1
-            END;
-          SPELLX := SPELLX + 1
-        END;  (* PRSPELL *)
-        
-        
-      PROCEDURE SPRETURN;  (* P010105 *)
-      
-        BEGIN
-          GOTOXY( 0, 23);
-          WRITE( 'L)EAVE WHEN READY');
-          REPEAT
-            GOTOXY( 41, 0);
-            GETKEY
-          UNTIL INCHAR = 'L';
-          INCHAR := CHR( 0)
-        END;  (* SPRETURN *)
-      
-      
-      BEGIN  (* LISTSPLS *)
-        MOVELEFT( IOCACHE[ GETREC( ZZERO, 0, SIZEOF( TSCNTOC))],
-                  SCNTOC,
-                  SIZEOF( TSCNTOC));
-        UNITREAD( DRIVE1, IOCACHE, BLOCKSZ, SCNTOCBL + DSKSPLNM, 0);
-        CHPTR := 0;
-        SPLISTX := 0;
-        WHILE IOCACHE[ CHPTR] <> CHR( CRETURN) DO
-          BEGIN
-            LLBASE04 := 0;
-            WHILE IOCACHE[ CHPTR] <> CHR( CRETURN) DO
-              BEGIN
-                LLBASE04 := LLBASE04 + 1;
-                SPELLNM[ LLBASE04] :=  IOCACHE[ CHPTR];
-                CHPTR := CHPTR + 1
-              END;
-            SPELLNM[ 0] := CHR( LLBASE04);
-            PRSPELL( SPELLNM);
-            CHPTR := CHPTR + 1
-          END;
-        UNITREAD( DRIVE1, IOCACHE, SIZEOF( IOCACHE), SCNTOCBL, 0);
-        SPRETURN
-      END;  (* LISTSPLS *)
-      
-      
-    PROCEDURE PRPRIEST;  (* P010106 *)
-    
-      BEGIN
-        WRITE( CHR( 12));
-        WRITE( 'KNOWN PRIEST SPELLS');
-        DSKSPLNM := SCNPRST;
-        SPELLX := 22;
-        LISTSPLS
-      END;  (* PRPRIEST *)
-      
-      
-    PROCEDURE PRMAGE;  (* P010107 *)
-    
-      BEGIN
-        DSKSPLNM := SCNMAGE;
-        SPELLX := 1;
-        WRITE( CHR(12));
-        WRITE( 'KNOWN MAGE SPELLS');
-        LISTSPLS
-      END;  (* PRMAGE *)
-      
-    
-    BEGIN  (* RDSPELLS *)
-      CHARX := LLBASE04;
-      REPEAT
-        WRITE( CHR(12));
-        WRITE( 'MAGE   SPELLS LEFT = ');
-        WRITE( CHARACTR[ CHARX].MAGESP[ 1]);
-        SPELLGRP := 1 + 1;
-        WHILE SPELLGRP <= 7 DO
-          BEGIN
-            WRITE( '/');
-            WRITE( CHARACTR[ CHARX].MAGESP[ SPELLGRP]);
-            SPELLGRP := SPELLGRP + 1
-          END;
-        WRITELN;
-        WRITE( 'PRIEST SPELLS LEFT = ');
-        WRITE( CHARACTR[ CHARX].PRIESTSP[ 1]);
-        SPELLGRP := 1 + 1;
-        WHILE SPELLGRP <= 7 DO
-          BEGIN
-            WRITE( '/');
-            WRITE( CHARACTR[ CHARX].PRIESTSP[ SPELLGRP]);
-            SPELLGRP := SPELLGRP + 1
-          END;
-        WRITELN;
-        WRITELN;
-        WRITELN( 'YOU MAY SEE M)AGE OR P)RIEST SPELL BOOKS');
-        WRITELN( 'OR L)EAVE.' :22);
-        GOTOXY( 41, 15);
-        GETKEY;
-        CASE INCHAR OF
-          'M' :  PRMAGE;
-          'P' :  PRPRIEST;
-        END
-      UNTIL INCHAR = 'L';
-      INCHAR := CHR( 0);
-      XGOTO := XBK2CMP2;
-      LLBASE04 := CHARX;
-      EXIT( UTILITIE)
-    END;  (* RDSPELLS *)
-    
+procedure UTILITIE;
 
-  PROCEDURE IDITEM;  (* P010108 *)
-  
-    VAR
-         ITEMX    : INTEGER;
-         OBJECT   : TOBJREC;
-  
-  
-    PROCEDURE EXITIDIT;  (* P010109 *)
-    
-      BEGIN
-        LLBASE04 := CHARX;
-        EXIT( UTILITIE)
-      END;  (* EXITIDIT *)
-    
-    
-    BEGIN (* IDITEM *)
-      CHARX := LLBASE04;
-      XGOTO := XBK2CMP2;
-      REPEAT
-        GOTOXY( 0, 18);
-        WRITE( CHR(11));
-        WRITE( 'IDENTIFY WHAT ITEM (0=EXIT) ? >');
-        GETKEY;
-        ITEMX := ORD( INCHAR) - ORD( '0');
-        IF ITEMX =  0 THEN
-          EXITIDIT
-      UNTIL (ITEMX > 0) OR (ITEMX <= CHARACTR[ CHARX].POSS.POSSCNT);
-      IF CHARACTR[ CHARX].POSS.POSSESS[ ITEMX].IDENTIF THEN
-        EXITIDIT;
-      CHARACTR[ CHARX].POSS.POSSESS[ ITEMX].IDENTIF :=
-        (RANDOM MOD 100) < (10 +  5 * CHARACTR[ CHARX].CHARLEV);
-      IF CHARACTR[ CHARX].POSS.POSSESS[ ITEMX].IDENTIF THEN
-        CENTSTR( 'SUCCESS!')
-      ELSE
-        CENTSTR( 'FAILURE');
-      IF (RANDOM MOD 100) < (35 - (3 * CHARACTR[ CHARX].CHARLEV)) THEN
-        BEGIN
-          MOVELEFT( IOCACHE[ GETREC(
-                      ZOBJECT,
-                      CHARACTR[ CHARX].POSS.POSSESS[ ITEMX].EQINDEX,
-                      SIZEOF( TOBJREC))],
-                    OBJECT,
-                    SIZEOF( TOBJREC));
-          CHARACTR[ CHARX].POSS.POSSESS[ ITEMX].CURSED := OBJECT.CURSED;
-          XGOTO := XEQPDSP
-        END;
-      EXITIDIT
-    END;  (* IDITEM *)
-    
-  PROCEDURE KANDIFND;  (* P01010A *)
-  
-    VAR
-        CHARXDSK  : INTEGER;
-        LOCSTRING : STRING;
-        LOSTCHAR  : TCHAR;
-  
-  
-    PROCEDURE EXITKAND;  (* P01010B *)
-    
-      BEGIN
-        WRITELN;
-        WRITELN( 'L)EAVE WHEN READY');
-        GOTOXY( 41, 0);
-        REPEAT
-          GETKEY;
-        UNTIL INCHAR = 'L';
-        INCHAR := 'A';
-        LLBASE04 := CHARX;
-        XGOTO := XBK2CMP2;
-        EXIT( UTILITIE)
-      END;  (* EXITKAND *)
-      
-      
-    PROCEDURE KANDILOC;  (* P01010C *)
-    
-      BEGIN
-        IF LOSTCHAR.STATUS = LOST THEN
-          EXIT( KANDILOC);
-        IF LOSTCHAR.STATUS < DEAD THEN
-          WRITELN( 'STILL WITH US!')
-        ELSE
-          BEGIN
-            IF (LOSTCHAR.LOSTXYL.LOCATION[ 1] = 0) AND
-               (LOSTCHAR.LOSTXYL.LOCATION[ 2] = 0) AND
-               (LOSTCHAR.LOSTXYL.LOCATION[ 3] = 0)     THEN
-              WRITELN( 'IN THE MOURGE')
-            ELSE
-              IF LOSTCHAR.LOSTXYL.LOCATION[ 3] <= 0 THEN
-                BEGIN
-                  WRITELN( 'UNREACHABLE!')
-                END
-              ELSE
-                BEGIN
-                  WRITE( 'IN THE ');
-                  
-                  IF LOSTCHAR.LOSTXYL.LOCATION[ 2] > 9 THEN
-                    WRITE( 'NORTH ')
-                  ELSE
-                    WRITE( 'SOUTH ');
-                    
-                  IF LOSTCHAR.LOSTXYL.LOCATION[ 1] > 9 THEN
-                    WRITE( 'EAST')
-                  ELSE
-                    WRITE( 'WEST');
-                    
-                  WRITE( ' OF LEVEL ');
-                  WRITELN(  LOSTCHAR.LOSTXYL.LOCATION[ 3]);
-                END
-          END;
-        EXITKAND
-      END;  (* KANDILOC *)
-      
-      
-    BEGIN  (* KANDIFND *)
-      CHARX :=  LLBASE04;
-      WRITE( CHR(12));
-      WRITELN( 'LOCATE BODIES');
-      WRITELN;
-      WRITE('FIND WHO ? >');
-      GETLINE( LOCSTRING);
-      WRITE( CHR(12));
-      WRITE( 'THE SOUL OF ');
-      WRITE( LOCSTRING);
-      WRITELN( ' IS..');
-      WRITELN;
-      FOR CHARXDSK := 0 TO SCNTOC.RECPERDK[ ZCHAR] - 1 DO
-        BEGIN
-          MOVELEFT( IOCACHE[ GETREC( ZCHAR, CHARXDSK, SIZEOF( TCHAR))],
-                    LOSTCHAR,
-                    SIZEOF( TCHAR));
-          IF LOSTCHAR.NAME = LOCSTRING THEN
-            KANDILOC
-        END;
-      WRITELN( 'LOST FOREVER!');
-      EXITKAND
-    END;   (* KANDIFND *)
-    
 
-    PROCEDURE DUMAPIC;  (* P01010D *)
-    
-      BEGIN
-        XGOTO := XBK2CMP2;
-        IF MAZELEV = 10 THEN
-          BEGIN
-            WRITE( CHR( 12));
-            WRITELN( 'ENCHANTMENTS PREVENT SPELL FROM WORKING');
-            EXIT( UTILITIE)
-          END;
-        CHARX := LLBASE04;
-        WRITE( CHR( 12));
-        WRITELN( 'PARTY LOCATION:');
-        WRITELN;
-        WRITE( 'THE PARTY IS FACING ');
-        CASE DIRECTIO OF
-          0:  WRITELN( 'NORTH.');
-          1:  WRITELN( 'EAST.');
-          2:  WRITELN( 'SOUTH.');
-          3:  WRITELN( 'WEST.');
-        END;
-        WRITELN;
-        WRITE( 'YOU ARE ');
-        WRITE( MAZEX);
-        WRITELN( ' SQUARES EAST AND');
-        WRITE( MAZEY);
-        WRITELN( ' SQUARES NORTH OF THE STAIRS');
-        WRITE( 'TO THE CASTLE, AND ');
-        WRITE( MAZELEV);
-        WRITELN( ' LEVELS');
-        WRITELN( 'BELOW IT.');
-        WRITELN;
-        WRITELN( 'L)EAVE WHEN READY');
-        REPEAT
-          GOTOXY( 41, 0);
+  { ── RDSPELLS ─────────────────────────────────────────────────────────────── }
+
+  procedure RDSPELLS;
+  const
+    SCNMAGE = 4;
+    SCNPRST = 5;
+  var
+    SPELLGRP  : SmallInt;
+    SPLISTX   : SmallInt;
+    DSKSPLNM  : SmallInt;
+    SPELLX    : SmallInt;
+    TC        : ^TCHAR;
+    SKNS      : ^TSPELLSKN;
+
+
+    procedure LISTSPLS;
+    var
+      SPELLNM : string[ 15];
+      CHPTR   : SmallInt;
+
+
+      procedure PRSPELL( SPELLNM: string);
+      begin
+        if SPELLNM[ 1] = '*' then
+          begin
+            SPELLNM := Copy( SPELLNM, 2, Length( SPELLNM) - 1);
+            SPLISTX := SPLISTX + 1
+          end;
+        MVCURSOR( 10 * (SPLISTX div 20), 2 + SPLISTX mod 20);
+        TC := CHARACTR[ CHARX];
+        SKNS := TC.SPELLSKN;
+        if SKNS^[ SPELLX] then
+          begin
+            PRINTSTR( SPELLNM);
+            SPLISTX := SPLISTX + 1
+          end;
+        SPELLX := SPELLX + 1
+      end;  { PRSPELL }
+
+
+      procedure SPRETURN;
+      begin
+        MVCURSOR( 0, 23);
+        PRINTSTR( 'L)EAVE WHEN READY');
+        repeat
+          MVCURSOR( 41, 0);
           GETKEY
-        UNTIL INCHAR = 'L';
-        INCHAR := 'A';
-        LLBASE04 := CHARX;
-        EXIT( UTILITIE)
-      END;  (* DUMAPIC *)
-  
+        until INCHAR = 'L';
+        INCHAR := Chr( 0)
+      end;  { SPRETURN }
 
-  PROCEDURE MALOR_PROC;    (* P01010E *)
-  
-    VAR
-         DELTAUD  : INTEGER;
-         DELTANS  : INTEGER;
-         DELTAEW  : INTEGER;
-  
-  
-    PROCEDURE TELEPORT;  (* P01010F *)
-    
-      PROCEDURE ROCK;  (* P010110 *)
-      
-        VAR
-             X : INTEGER;
-      
-        BEGIN
-          WRITELN( 'YOU LANDED IN SOLID ROCK OUTSIDE THE');
-          WRITELN( 'DUNGEON - YOU ARE LOST FOREVER!');
-          FOR X := 0 TO PARTYCNT - 1 DO
-            BEGIN
-              CHARACTR[ X].INMAZE := FALSE;
-              CHARACTR[ X].STATUS := LOST
-            END;
-          XGOTO := XCEMETRY;
-          EXIT( UTILITIE)
-        END;
-              
-        
-      PROCEDURE VOLCANO;  (* P010111 *)
-      
-        VAR
-             X : INTEGER;
-      
-        BEGIN
-          WRITELN( 'YOU MATERIALIZED IN MID-AIR AND FELL');
-          WRITELN( 'TO A PAINFUL DEATH!');
-          FOR X := 0 TO PARTYCNT - 1 DO
-            IF CHARACTR[ X].STATUS < DEAD THEN
-              CHARACTR[ X].STATUS := DEAD;
-          MAZELEV := 0;
-          XGOTO := XCHK4WIN;
-          EXIT( UTILITIE)
-        END;
-        
-        
-      PROCEDURE MOAT;   (* P010112 *)
-      
-        VAR
-             X : INTEGER;
-      
-        BEGIN
-          WRITELN( 'YOU APPEARED IN THE CASTLE MOAT AND');
-          WRITELN( 'PROBABLY DROWNED!');
-          FOR X := 0 TO PARTYCNT - 1 DO
-            IF CHARACTR[ X].STATUS < DEAD THEN
-              IF (RANDOM MOD 25) > CHARACTR[ X].ATTRIB[ AGILITY] THEN
-                CHARACTR[ X].STATUS := DEAD;
-          MAZELEV := 0;
-          XGOTO := XCHK4WIN;
-          EXIT( UTILITIE)
-        END;
-    
-    
-      PROCEDURE TOSHOPS;  (* P010113 *)
-      
-        BEGIN
-          XGOTO := XCHK4WIN;
-          EXIT( UTILITIE)
-        END;
-    
-    
-      PROCEDURE BOUNCE;  (* P010114 *)
-      
-        BEGIN
-          WRITELN( 'YOU BOUNCED BACK TO WHERE YOU WERE!');
-          EXIT( UTILITIE)
-        END;
-    
-    
-      BEGIN (* TELEPORT *)
-        WRITE( CHR(12));
-        XGOTO := XNEWMAZE;
-        IF MAZELEV + DELTAUD = SCNTOC.RECPERDK[ ZMAZE] THEN
-          BOUNCE;
-        MAZEX := MAZEX + DELTAEW;
-        MAZEY := MAZEY + DELTANS;
-        MAZELEV := MAZELEV + DELTAUD;
-        IF ( (MAZEX < 0) OR (MAZEX > 19) OR
-             (MAZEY < 0) OR (MAZEY > 19) OR
-             (MAZELEV > SCNTOC.RECPERDK[ ZMAZE]))
-           AND
-           (MAZELEV > 0) THEN
-            ROCK
-        ELSE
-          BEGIN
-            IF MAZELEV < 0 THEN
-              VOLCANO
-            ELSE
-              IF MAZELEV = 0 THEN
-                IF (MAZEX = 0) AND (MAZEY = 0) THEN
-                  TOSHOPS
-                ELSE
-                  MOAT
-          END;
-        EXIT( UTILITIE)
-      END;
-  
-  
-    BEGIN (* MALOR *)
-      CHARX := LLBASE04;
-      WRITE( CHR(12));
-      WRITELN( 'PARTY TELEPORT:');
-      WRITELN;
-      WRITELN( 'ENTER NSEWU OR D TO  SET DISPLACEMENT,');
-      WRITELN( 'THEN [RETURN] TO TELEPORT, OR [ESC] TO');
-      WRITELN( 'CHICKEN OUT!');
-      WRITELN;
-      WRITELN( '# SQUARES EAST  =');
-      WRITELN( '# SQUARES NORTH =');
-      WRITELN( '# SQUARES DOWN  =');
-      DELTAEW := 0;
-      DELTANS := 0;
-      DELTAUD := 0;
-      REPEAT
-        GOTOXY( 18, 6);
-        WRITE( DELTAEW : 4);
-        GOTOXY( 18, 7);
-        WRITE( DELTANS : 4);
-        GOTOXY( 18, 8);
-        WRITE( DELTAUD : 4);
-        GOTOXY( 41, 0);
-        GETKEY;
-        IF INCHAR = CHR( CRETURN) THEN
-          TELEPORT
-        ELSE
-          BEGIN
-            CASE INCHAR OF
-              'N': DELTANS := DELTANS + 1;
-              'S': DELTANS := DELTANS - 1;
-              'E': DELTAEW := DELTAEW + 1;
-              'W': DELTAEW := DELTAEW - 1;
-              'D': DELTAUD := DELTAUD + 1;
-              'U': DELTAUD := DELTAUD - 1;
-            END
-          END
-      UNTIL INCHAR = CHR( 27);
-      XGOTO := XBK2CMP2;
+
+    begin  { LISTSPLS }
+      UNITREAD( SCNTOCBL + DSKSPLNM);   { load spell name block into IOCACHE }
+      CHPTR := 0;
+      SPLISTX := 0;
+      while IOCACHE[ CHPTR] <> Chr( CRETURN) do
+        begin
+          LLBASE04 := 0;
+          while IOCACHE[ CHPTR] <> Chr( CRETURN) do
+            begin
+              LLBASE04 := LLBASE04 + 1;
+              SPELLNM[ LLBASE04] := IOCACHE[ CHPTR];
+              CHPTR := CHPTR + 1
+            end;
+          SPELLNM[ 0] := Chr( LLBASE04);
+          PRSPELL( SPELLNM);
+          CHPTR := CHPTR + 1
+        end;
+      SPRETURN
+    end;  { LISTSPLS }
+
+
+    procedure PRPRIEST;
+    begin
+      Write( Chr( 12));
+      Write( 'KNOWN PRIEST SPELLS');
+      DSKSPLNM := SCNPRST;
+      SPELLX   := 22;
+      LISTSPLS
+    end;
+
+
+    procedure PRMAGE;
+    begin
+      DSKSPLNM := SCNMAGE;
+      SPELLX   := 1;
+      Write( Chr( 12));
+      Write( 'KNOWN MAGE SPELLS');
+      LISTSPLS
+    end;
+
+
+  begin  { RDSPELLS }
+    CHARX := LLBASE04;
+    TC := CHARACTR[ CHARX];
+    repeat
+      Write( Chr( 12));
+      Write( 'MAGE   SPELLS LEFT = ');
+      Write( TC.MAGESP[ 1]);
+      SPELLGRP := 2;
+      while SPELLGRP <= 7 do
+        begin
+          Write( '/');
+          Write( TC.MAGESP[ SPELLGRP]);
+          SPELLGRP := SPELLGRP + 1
+        end;
+      WriteLn;
+      Write( 'PRIEST SPELLS LEFT = ');
+      Write( TC.PRIESTSP[ 1]);
+      SPELLGRP := 2;
+      while SPELLGRP <= 7 do
+        begin
+          Write( '/');
+          Write( TC.PRIESTSP[ SPELLGRP]);
+          SPELLGRP := SPELLGRP + 1
+        end;
+      WriteLn;
+      WriteLn;
+      WriteLn( 'YOU MAY SEE M)AGE OR P)RIEST SPELL BOOKS');
+      WriteLn( 'OR L)EAVE.');
+      MVCURSOR( 41, 15);
+      GETKEY;
+      case INCHAR of
+        'M': PRMAGE;
+        'P': PRPRIEST;
+      end
+    until INCHAR = 'L';
+    INCHAR := Chr( 0);
+    XGOTO := XBK2CMP2;
+    LLBASE04 := CHARX;
+    _done := true; exit
+  end;  { RDSPELLS }
+
+
+  { ── IDITEM ───────────────────────────────────────────────────────────────── }
+
+  procedure IDITEM;
+  var
+    ITEMX  : SmallInt;
+    OBJ    : TOBJREC;
+    TC     : ^TCHAR;
+    PP     : ^TPOSSESS;
+
+
+    procedure EXITIDIT;
+    begin
       LLBASE04 := CHARX;
-      EXIT( UTILITIE)
-    END;
-    
-
-  PROCEDURE NEWMAZE;  (* P010115 *)
-  
-    VAR
-         MAZEMAP  : TMAZE;
-         UNUSED   : ARRAY[ 0..2] OF INTEGER;
-         
-  
-    PROCEDURE FIGHTS;  (* P010116 *)
-    
-      VAR
-           FIGHTY : INTEGER;
-           FIGHTX : INTEGER;
-           Y      : INTEGER;
-           X      : INTEGER;
-    
-    
-      PROCEDURE FINDSPOT;  (* P010117 *)
-      
-        VAR
-            Y1 : INTEGER;
-            X1 : INTEGER;
-      
-        BEGIN (* FINDSPOT *)
-          X1 := RANDOM MOD 20;
-          Y1 := RANDOM MOD 20;
-          FIGHTX := X1;
-          FIGHTY := Y1;
-          REPEAT
-            IF MAZEMAP.FIGHTS[ FIGHTX][ FIGHTY] = 1 THEN
-              IF NOT (FIGHTMAP[ FIGHTX][ FIGHTY]) THEN
-                BEGIN
-                  EXIT( FINDSPOT)
-                END;
-            FIGHTX := FIGHTX + 1;
-            IF FIGHTX > 19 THEN
-              BEGIN
-                FIGHTX := 0;
-                FIGHTY := FIGHTY + 1;
-                IF FIGHTY > 19 THEN
-                  FIGHTY := 0
-              END;
-          UNTIL (FIGHTX = X1) AND (FIGHTY = Y1);
-          EXIT( FIGHTS)
-        END;   (* FINDSPOT *)
-        
-        
-      PROCEDURE FILLROOM( X : INTEGER; Y : INTEGER);  (* P010118 *)
-        
-        BEGIN
-        
-          X := (X + 20) MOD 20;
-          Y := (Y + 20) MOD 20;
-          IF (MAZEMAP.FIGHTS[ X][ Y] = 0) OR
-             FIGHTMAP[ X][ Y] THEN
-             BEGIN
-               EXIT( FILLROOM)
-             END;
-             
-          FIGHTMAP[ X][ Y] := TRUE;
-          
-          IF MAZEMAP.N[ X][ Y] = OPEN THEN
-            FILLROOM( X, Y + 1);
-            
-          IF MAZEMAP.E[ X][ Y] = OPEN THEN
-            FILLROOM( X + 1, Y);
-            
-          IF MAZEMAP.S[ X][ Y] = OPEN THEN
-            FILLROOM( X, Y - 1);
-            
-          IF MAZEMAP.W[ X][ Y] = OPEN THEN
-            FILLROOM( X - 1, Y)
-            
-        END;   (* FILLROOM *)
-    
-    
-      BEGIN (* FIGHTS *)
-        FILLCHAR( FIGHTMAP, 80, 0);
-        FOR X := 1 TO 9 DO
-          BEGIN
-            FINDSPOT;
-            FILLROOM( FIGHTX, FIGHTY)
-          END;
-          
-        FOR X := 0 TO 19 DO
-          BEGIN
-            FOR Y := 0 TO 19 DO
-              BEGIN
-                IF MAZEMAP.SQRETYPE[ MAZEMAP.SQREXTRA[ X][ Y]] = ENCOUNTE THEN
-                  FILLROOM( X, Y)
-              END;
-          END;
-      END;  (* FIGHTS *)
-  
-  
-    BEGIN (* NEWMAZE *)
-      IF MAZELEV = 0 THEN
-        BEGIN
-          WRITE( CHR(12));
-          XGOTO := XCHK4WIN;
-          EXIT( UTILITIE)
-        END;
-        
-      IF MAZELEV < 0 THEN
-        BEGIN
-          MAZELEV := 1;
-          XGOTO := XEQUIP6
-        END
-      ELSE
-        BEGIN
-          XGOTO := XRUNNER
-        END;
-      MOVELEFT( IOCACHE[ GETREC( ZMAZE, MAZELEV - 1, SIZEOF( TMAZE))],
-                MAZEMAP,
-                SIZEOF( TMAZE));
-      FIGHTS;
-      CLRRECT( 1, 11, 38, 4);
-      EXIT( UTILITIE)
-    END;  (* NEWMAZE *)
-    
-
-	PROCEDURE EQUIPCHR( CHARI : INTEGER);  (* P010119 *)
-    
-    VAR
-         UNARMED  : BOOLEAN;
-         CANUSE   : ARRAY[ TOBJTYPE] OF BOOLEAN;
-         UNUSED   : BOOLEAN;
-         TEMPX    : INTEGER; (* MULTIPLE USES *)
-         POSSI    : INTEGER;
-         POSSCNT  : INTEGER;
-         LUCKI    : INTEGER;
-         OBJI     : TOBJTYPE;
-         OBJECT   : TOBJREC;
-         OBJLIST  : ARRAY[ 1..8] OF INTEGER;
-         
-    
-    PROCEDURE CHSPCPOW;  (* P01011A *)
-      
-      
-        PROCEDURE SPCPOWER;  (* P01011B *)
-        
-          VAR
-               SPCTEMP  : INTEGER;
-               GOLD50K  : TWIZLONG;
-        
-        
-          PROCEDURE SPC1TO12( ATTR2MOD: INTEGER;  (* P01011C *)
-                              MODAMT:   INTEGER);
-          
-            VAR
-                 ATTRX : TATTRIB;
-          
-            BEGIN
-              ATTRX := STRENGTH;
-              WHILE ATTR2MOD > 1 DO
-                BEGIN
-                  ATTRX := SUCC( ATTRX);
-                  ATTR2MOD := ATTR2MOD - 1
-                END;
-              SPCTEMP := CHARACTR[ CHARI].ATTRIB[ ATTRX] + MODAMT;
-              IF (SPCTEMP > 2) AND (SPCTEMP < 19) THEN
-                CHARACTR[ CHARI].ATTRIB[ ATTRX] := SPCTEMP;
-            END;
-          
-        
-          BEGIN  (* SPCPOWER *)
-            FILLCHAR( GOLD50K, 6, 0);
-            GOLD50K.MID := 5;
-            WRITE( CHR( 12));
-            WRITELN( 'WILL YOU INVOKE THE SPECIAL POWER OF');
-            WRITE( 'YOUR ');
-            IF CHARACTR[ CHARI].POSS.POSSESS[ POSSI].IDENTIF THEN
-              WRITE( OBJECT.NAME)
-            ELSE
-              WRITE( OBJECT.NAMEUNK);
-            WRITE( ' (Y/N) ? >');
-            REPEAT
-              GETKEY
-            UNTIL (INCHAR = 'Y') OR (INCHAR = 'N');
-            IF INCHAR = 'N' THEN
-              EXIT( SPCPOWER);
-            IF (RANDOM MOD 100) < OBJECT.CHGCHANC THEN
-              CHARACTR[ CHARI].POSS.POSSESS[ POSSI].EQINDEX :=
-                OBJECT.CHANGETO;
-            IF OBJECT.SPECIAL < 7 THEN
-              BEGIN
-                SPC1TO12( OBJECT.SPECIAL, 1)
-              END
-            ELSE
-              BEGIN
-                IF OBJECT.SPECIAL < 13 THEN
-                  SPC1TO12( OBJECT.SPECIAL - 6, - 1)
-                ELSE 
-                  BEGIN
-                    WITH CHARACTR[ CHARI] DO
-                      BEGIN
-                        CASE OBJECT.SPECIAL OF
-                          13: IF AGE > 1040 THEN
-                                AGE := AGE - 52;
-                          14: AGE := AGE + 52;
-                          15: CLASS := SAMURAI;
-                          16: CLASS := LORD;
-                          17: CLASS := NINJA;
-                          18: ADDLONGS( GOLD, GOLD50K);
-                          19: ADDLONGS( EXP, GOLD50K);
-                          20: STATUS := LOST;
-                          21: BEGIN
-                                STATUS := OK;
-                                HPLEFT := HPMAX;
-                                LOSTXYL.POISNAMT[ 1] := 0
-                              END;
-                          22: HPMAX := HPMAX + 1;
-                          23: BEGIN
-                                (* LOOKS LIKE BUG!  PARTYCNT - 1  !!! *)
-                                FOR SPCTEMP := 0 TO PARTYCNT DO
-                                    CHARACTR[ SPCTEMP].HPLEFT :=
-                                      CHARACTR[ SPCTEMP].HPMAX
-                              END;
-                        END
-                    END
-                  END
-              END;
-          END;  (* SPCPOWER *)
-      
-      
-        BEGIN (* CHSPCPOW *)
-          FOR POSSI := 1 TO CHARACTR[ CHARI].POSS.POSSCNT DO
-            IF CHARACTR[ CHARI].POSS.POSSESS[ POSSI].EQINDEX > 0 THEN
-              BEGIN
-                MOVELEFT( IOCACHE[ GETREC( 
-                            ZOBJECT,
-                            CHARACTR[ CHARI].POSS.POSSESS[ POSSI].EQINDEX,
-                            SIZEOF( TOBJREC))],
-                          OBJECT,
-                          SIZEOF( TOBJREC));
-                IF OBJECT.SPECIAL > 0 THEN
-                  SPCPOWER
-              END;
-        END;
-    
-    
-      PROCEDURE NORMPOW;  (* P01011D *)
-      
-        VAR
-             TEMPX : INTEGER;
-             TEMPY : INTEGER;
-             POSSX : INTEGER;
-      
-        BEGIN
-          FILLCHAR( CANUSE, 14, 0);
-          FOR POSSX := 1 TO CHARACTR[ CHARI].POSS.POSSCNT DO
-            BEGIN
-              MOVELEFT( IOCACHE[ GETREC( ZOBJECT,
-                                         CHARACTR[ CHARI].
-                                           POSS.POSSESS[ POSSX].EQINDEX,
-                                         SIZEOF( TOBJREC))],
-                        OBJECT,
-                        SIZEOF( TOBJREC));
-              IF OBJECT.CLASSUSE[ CHARACTR[ CHARI].CLASS] THEN
-                CANUSE[ OBJECT.OBJTYPE] := TRUE;
-              IF CHARACTR[ CHARI].HEALPTS < OBJECT.HEALPTS THEN
-                CHARACTR[ CHARI].HEALPTS := OBJECT.HEALPTS;
-              FOR TEMPX := 0 TO 13 DO
-                CHARACTR[ CHARI].WEPVSTY2[ 0][ TEMPX] :=
-                CHARACTR[ CHARI].WEPVSTY2[ 0][ TEMPX] OR OBJECT.WEPVSTY2[ TEMPX];
-              FOR TEMPY := 0 TO 6 DO
-                CHARACTR[ CHARI].WEPVSTY3[ 0][ TEMPY] :=
-                CHARACTR[ CHARI].WEPVSTY3[ 0][ TEMPY] OR OBJECT.WEPVSTY3[ TEMPY]
-            END
-        END;  (* NORMPOW *)
-        
-        
-      PROCEDURE ARMORPOW( CHARX: INTEGER;  (* P01011E *)
-                          POSSX: INTEGER;
-                          OBJID: INTEGER);
-      
-        VAR
-             MP04XX : INTEGER;  (* UNUSED *)
-      
-        BEGIN
-          UNARMED := FALSE;
-          MOVELEFT( IOCACHE[ GETREC( ZOBJECT,
-                                     OBJID,
-                                     SIZEOF( TOBJREC))],
-                    OBJECT,
-                    SIZEOF( TOBJREC));
-          WITH CHARACTR[ CHARX] DO
-            BEGIN
-              POSS.POSSESS[ POSSX].CURSED := OBJECT.CURSED;
-              IF (OBJECT.ALIGN = UNALIGN) OR (OBJECT.ALIGN = ALIGN) THEN
-                BEGIN
-                  IF OBJECT.XTRASWNG > SWINGCNT THEN
-                    SWINGCNT := OBJECT.XTRASWNG;
-                  ARMORCL := ARMORCL - OBJECT.ARMORMOD;
-                  HPCALCMD := HPCALCMD + OBJECT.WEPHITMD;
-                  IF OBJECT.OBJTYPE = WEAPON THEN
-                    BEGIN
-                      LLBASE04 := HPDAMRC.HPMINAD;
-                      HPDAMRC := OBJECT.WEPHPDAM;
-                      HPDAMRC.HPMINAD := HPDAMRC.HPMINAD + LLBASE04;
-                      CRITHITM := CRITHITM OR OBJECT.CRITHITM;
-                      WEPVSTYP := OBJECT.WEPVSTYP
-                    END
-                END
-              ELSE
-                BEGIN
-                  HPCALCMD := HPCALCMD - 1;
-                  ARMORCL := ARMORCL + 1;
-                  CRITHITM := FALSE;
-                  POSS.POSSESS[ POSSX].CURSED := TRUE
-                END
-            END;
-        END;  (* ARMORPOW *)
-        
-        
-      PROCEDURE ARM4CHAR;  (* P01011F *)
-      
-      VAR
-           POSSX : INTEGER;
-      
-        BEGIN
-          FOR POSSX := 1 TO CHARACTR[ CHARI].POSS.POSSCNT DO
-            IF CHARACTR[ CHARI].POSS.POSSESS[ POSSX].EQUIPED THEN
-              ARMORPOW( CHARI, POSSX,
-                                 CHARACTR[ CHARI].POSS.POSSESS[ POSSX].EQINDEX)
-        END;
-        
-        
-      PROCEDURE DOEQUIP;  (* P010120 *)
-      
-      
-        PROCEDURE EQUIPONE;  (* P010121 *)
-        
-          BEGIN
-            REPEAT
-              GOTOXY( 0, 15);
-              WRITE( CHR( 11));
-              WRITE( 'WHICH ONE ([RET] FOR NONE) ? >');
-              GETKEY;
-              IF INCHAR = CHR( CRETURN) THEN
-                EXIT( EQUIPONE);
-              POSSI := ORD( INCHAR) - ORD( '0')
-            UNTIL (POSSI > 0) AND (POSSI <= POSSCNT);
-            CHARACTR[ CHARI].POSS.POSSESS[ OBJLIST[ POSSI]].EQUIPED := TRUE;
-            ARMORPOW( CHARI,
-                      OBJLIST[ POSSI],
-                      CHARACTR[ CHARI].POSS.POSSESS[ OBJLIST[ POSSI]].EQINDEX)
-          END;  (* EQUIPONE *)
-      
-      
-        PROCEDURE CURSBELL( CURSSTR : STRING);  (* P010122 *)
-        
-          VAR
-               X : INTEGER;
-        
-          BEGIN
-            FOR X := 1 TO LENGTH( CURSSTR) DO
-              BEGIN
-                WRITE( CURSSTR[ X]);
-                WRITE( CHR( 7));
-                WRITE( CHR( 7))
-              END;
-          END;
-        
-        
-        BEGIN (* DOEQUIP *)
-          IF NOT CANUSE[ OBJI] THEN
-            EXIT (DOEQUIP);
-          WRITE( CHR( 12));
-          WRITE( 'SELECT ');
-          CASE OBJI OF
-              WEAPON : WRITE( 'WEAPON');
-               ARMOR : WRITE( 'ARMOR');
-              SHIELD : WRITE( 'SHIELD');
-              HELMET : WRITE( 'HELMET');
-            GAUNTLET : WRITE( 'GAUNTLETS');
-                MISC : WRITE( 'MISC. ITEM');
-          END;
-          WRITE( ' FOR ');
-          WRITELN( CHARACTR[ CHARI].NAME);
-          WRITELN;
-          WRITELN;
-          POSSCNT := 0;
-          FOR POSSI := 1 TO CHARACTR[ CHARI].POSS.POSSCNT DO
-            BEGIN
-              IF CHARACTR[ CHARI].POSS.POSSESS[ POSSI].EQINDEX > 0 THEN
-                BEGIN
-                  MOVELEFT( IOCACHE[ GETREC(
-                                ZOBJECT,
-                                CHARACTR[ CHARI].POSS.POSSESS[ POSSI].EQINDEX,
-                                SIZEOF( TOBJREC))],
-                            OBJECT,
-                            SIZEOF( TOBJREC));
-                  IF (OBJECT.OBJTYPE = OBJI) AND
-                     (OBJECT.CLASSUSE[ CHARACTR[ CHARI].CLASS]) THEN
-                    BEGIN
-                      POSSCNT := POSSCNT + 1;
-                      OBJLIST[ POSSCNT] := POSSI;
-                      WRITE( ' ' :10);
-                      WRITE( POSSCNT : 1);
-                      WRITE( ')');
-                      IF CHARACTR[ CHARI].POSS.POSSESS[ POSSI].CURSED THEN
-                        WRITE( '-')
-                      ELSE IF CHARACTR[ CHARI].POSS.POSSESS[ POSSI].IDENTIF
-                                                                         THEN
-                        WRITE( ' ')
-                      ELSE
-                        WRITE( '?');
-                      IF CHARACTR[ CHARI].POSS.POSSESS[ POSSI].IDENTIF THEN
-                        WRITELN( OBJECT.NAME)
-                      ELSE
-                        WRITELN( OBJECT.NAMEUNK);
-                    END
-                END
-            END;
-            
-            TEMPX := 0;
-            FOR POSSI := 1 TO POSSCNT DO
-              IF CHARACTR[ CHARI].POSS.POSSESS[ OBJLIST[ POSSI]].CURSED THEN
-                TEMPX := POSSI;
-            IF TEMPX = 0 THEN
-              EQUIPONE;
-              
-            TEMPX := 0;
-            FOR POSSI := 1 TO POSSCNT DO
-              IF CHARACTR[ CHARI].POSS.POSSESS[ OBJLIST[ POSSI]].CURSED THEN
-                TEMPX := POSSI;
-            IF TEMPX > 0 THEN
-              BEGIN
-                GOTOXY( 7, 23);
-                CURSBELL( '** CURSED **');
-                CHARACTR[ CHARI].POSS.POSSESS[ OBJLIST[ TEMPX]].EQUIPED :=
-                                                                          TRUE;
-                ARMORPOW( CHARI,
-                          OBJLIST[ TEMPX],
-                       CHARACTR[ CHARI].POSS.POSSESS[ OBJLIST[ TEMPX]].EQINDEX)
-              END
-        END;  (* DOEQUIP *)
-        
-        
-      PROCEDURE UPLCKSKL( LSSUB:    INTEGER;  (* P010123 *)
-                          LSMODAMT: INTEGER);
-      
-        BEGIN
-          LSMODAMT := CHARACTR[ CHARI].LUCKSKIL[ LSSUB] - LSMODAMT;
-          IF LSMODAMT < 1 THEN
-            LSMODAMT := 1;
-          CHARACTR[ CHARI].LUCKSKIL[ LSSUB] := LSMODAMT
-        END;
-        
-        
-      PROCEDURE INITSTUF;  (* P010124 *)
-      
-        VAR
-             X : INTEGER;
-             Y : INTEGER;
-      
-        BEGIN
-          WITH CHARACTR[ CHARI] DO
-            BEGIN
-              FOR X := 0 TO 13 DO
-                BEGIN
-                  WEPVSTY2[ 0][ X] := FALSE;
-                  WEPVSTY2[ 1][ X] := FALSE;
-                  WEPVSTYP[ X] := FALSE
-                END;
-              FOR Y := 0 TO 6 DO
-                BEGIN
-                  WEPVSTY3[ 0][ Y] := FALSE;
-                  WEPVSTY3[ 1][ Y] := FALSE
-                END
-            END
-        END;
-        
-        
-      BEGIN  (* EQUIPCHR *)
-        WITH CHARACTR[ CHARI] DO
-          BEGIN
-            TEMPX := (20 - CHARLEV DIV 5) - (ATTRIB[ LUCK] DIV 6);
-            IF TEMPX < 1 THEN
-              TEMPX := 1;
-            FOR LUCKI := 0 TO 4 DO
-              LUCKSKIL[ LUCKI] := TEMPX;
-              
-            CASE CLASS OF
-            
-              FIGHTER :   UPLCKSKL( 0, 3);
-                 MAGE :   UPLCKSKL( 4, 3);
-               PRIEST :   UPLCKSKL( 1, 3);
-                THIEF :   UPLCKSKL( 3, 3);
-                
-               BISHOP : BEGIN
-                          UPLCKSKL( 2, 2);
-                          UPLCKSKL( 4, 2);
-                          UPLCKSKL( 1, 2);
-                        END;
-                        
-              SAMURAI : BEGIN
-                          UPLCKSKL( 0, 2);
-                          UPLCKSKL( 4, 2);
-                        END;
-                        
-                 LORD : BEGIN
-                          UPLCKSKL( 0, 2);
-                          UPLCKSKL( 1, 2);
-                        END;
-                          
-                NINJA : BEGIN
-                          UPLCKSKL( 0, 3);
-                          UPLCKSKL( 1, 2);
-                          UPLCKSKL( 2, 4);
-                          UPLCKSKL( 3, 3);
-                          UPLCKSKL( 4, 2);
-                        END;
-               
-            END;
-            
-            CASE RACE OF
-               HUMAN:  UPLCKSKL( 0, 1);
-                 ELF:  UPLCKSKL( 2, 2);
-               DWARF:  UPLCKSKL( 3, 4);
-               GNOME:  UPLCKSKL( 1, 2);
-              HOBBIT:  UPLCKSKL( 4, 3);
-            END;
-            
-            IF NOT EQUIPALL THEN
-              FOR TEMPX := 1 TO 8 DO
-                POSS.POSSESS[ TEMPX].EQUIPED := FALSE;
-            
-            IF (CLASS = PRIEST) OR
-               (CLASS = FIGHTER) OR
-               (CLASS >= SAMURAI) THEN
-              HPCALCMD := 2 + CHARLEV DIV 3
-            ELSE
-              HPCALCMD := CHARLEV DIV 5;
-            
-            HPDAMRC.LEVEL   := 2;
-            HPDAMRC.HPFAC   := 2;
-            HPDAMRC.HPMINAD := 0;
-            
-            IF ATTRIB[ STRENGTH] > 15 THEN
-              BEGIN
-                HPCALCMD := HPCALCMD + ATTRIB[ STRENGTH] - 15;
-                HPDAMRC.HPMINAD := ATTRIB[ STRENGTH] - 15
-              END
-            ELSE
-              IF ATTRIB[ STRENGTH] < 6 THEN
-                HPCALCMD := HPCALCMD + ATTRIB[ STRENGTH] - 6;
-            
-            HEALPTS := 0;
-            
-            CRITHITM := CLASS = NINJA;
-            
-            SWINGCNT := 1;
-            
-            IF CLASS = NINJA THEN
-              HPDAMRC.HPFAC := 4;
-              
-            ARMORCL := 10;
-              
-            IF (CLASS = FIGHTER) OR
-               (CLASS >= SAMURAI) THEN
-              SWINGCNT := SWINGCNT + (CHARLEV DIV 5) + ORD( (CLASS = NINJA)); 
-              
-            IF SWINGCNT > 10 THEN
-              SWINGCNT := 10;
-              
-            INITSTUF;
-            NORMPOW;
-            UNARMED := TRUE
-          END;
-            
-          IF NOT EQUIPALL THEN
-            BEGIN
-              FOR OBJI := WEAPON TO GAUNTLET DO
-                DOEQUIP;
-              OBJI := MISC;
-              DOEQUIP;
-              CHSPCPOW
-            END
-          ELSE
-            ARM4CHAR;
-          
-          IF CHARACTR[ CHARI].CLASS = NINJA THEN
-            IF UNARMED THEN
-              CHARACTR[ CHARI].ARMORCL := (CHARACTR[ CHARI].ARMORCL -
-                (CHARACTR[ CHARI].CHARLEV DIV 3)) - 2
-      END;  (* EQUIPCHR *)
+      _done := true; exit
+    end;
 
 
+  begin  { IDITEM }
+    CHARX := LLBASE04;
+    TC := CHARACTR[ CHARX];
+    XGOTO := XBK2CMP2;
+    repeat
+      MVCURSOR( 0, 18);
+      Write( Chr( 11));
+      Write( 'IDENTIFY WHAT ITEM (0=EXIT) ? >');
+      GETKEY;
+      ITEMX := Byte( INCHAR) - Byte( '0');
+      if ITEMX = 0 then begin EXITIDIT; if _done then exit end
+    until (ITEMX > 0) or (ITEMX <= TC.POSS.POSSCNT);
+    PP := TC.POSS.POSSESS[ ITEMX];
+    if PP.IDENTIF then begin EXITIDIT; if _done then exit end;
+    PP.IDENTIF :=
+      (Random( 100)) < (10 + 5 * TC.CHARLEV);
+    if PP.IDENTIF then
+      CENTSTR( 'SUCCESS!')
+    else
+      CENTSTR( 'FAILURE');
+    if (Random( 100)) < (35 - (3 * TC.CHARLEV)) then
+      begin
+        LOADOBJREC( PP.EQINDEX, OBJ);
+        PP.CURSED := OBJ.CURSED;
+        XGOTO := XEQPDSP
+      end;
+    EXITIDIT
+  end;  { IDITEM }
 
-    PROCEDURE EQUIP6;  (* P010125 *)
-    
-      VAR
-           PARTYX : INTEGER;
-           
-      BEGIN
-        EQUIPALL := TRUE;
-        FOR PARTYX := 0 TO (PARTYCNT - 1) DO
-          EQUIPCHR( PARTYX);
-        IF XGOTO = XEQUIP6 THEN
+
+  { ── KANDIFND ─────────────────────────────────────────────────────────────── }
+
+  procedure KANDIFND;
+  var
+    CHARXDSK  : SmallInt;
+    LOCSTRING : string[ 40];
+    LOSTCHAR  : TCHAR;
+
+
+    procedure EXITKAND;
+    begin
+      WriteLn;
+      WriteLn( 'L)EAVE WHEN READY');
+      MVCURSOR( 41, 0);
+      repeat
+        GETKEY
+      until INCHAR = 'L';
+      INCHAR := 'A';
+      LLBASE04 := CHARX;
+      XGOTO := XBK2CMP2;
+      _done := true; exit
+    end;
+
+
+    procedure KANDILOC;
+    begin
+      if Byte( LOSTCHAR.STATUS) = Byte( LOST) then exit;
+      if Byte( LOSTCHAR.STATUS) < Byte( DEAD) then
+        WriteLn( 'STILL WITH US!')
+      else
+        begin
+          if (LOSTCHAR.LOSTXYL[ 1] = 0) and
+             (LOSTCHAR.LOSTXYL[ 2] = 0) and
+             (LOSTCHAR.LOSTXYL[ 3] = 0) then
+            WriteLn( 'IN THE MOURGE')
+          else
+            if LOSTCHAR.LOSTXYL[ 3] <= 0 then
+              WriteLn( 'UNREACHABLE!')
+            else
+              begin
+                Write( 'IN THE ');
+                if LOSTCHAR.LOSTXYL[ 2] > 9 then
+                  Write( 'NORTH ')
+                else
+                  Write( 'SOUTH ');
+                if LOSTCHAR.LOSTXYL[ 1] > 9 then
+                  Write( 'EAST')
+                else
+                  Write( 'WEST');
+                Write( ' OF LEVEL ');
+                WriteLn( LOSTCHAR.LOSTXYL[ 3])
+              end
+        end;
+      EXITKAND; if _done then exit
+    end;  { KANDILOC }
+
+
+  begin  { KANDIFND }
+    CHARX := LLBASE04;
+    Write( Chr( 12));
+    WriteLn( 'LOCATE BODIES');
+    WriteLn;
+    Write( 'FIND WHO ? >');
+    GETLINE;
+    LOCSTRING := GTSTRING;
+    Write( Chr( 12));
+    Write( 'THE SOUL OF ');
+    Write( LOCSTRING);
+    WriteLn( ' IS..');
+    WriteLn;
+    for CHARXDSK := 0 to SCNTOC.RECPERDK[ ZCHAR] - 1 do
+      begin
+        LOADTCHAR( CHARXDSK, LOSTCHAR);
+        if LOSTCHAR.NAME = LOCSTRING then
+          begin KANDILOC; if _done then exit end
+      end;
+    WriteLn( 'LOST FOREVER!');
+    EXITKAND
+  end;  { KANDIFND }
+
+
+  { ── DUMAPIC ──────────────────────────────────────────────────────────────── }
+
+  procedure DUMAPIC;
+  begin
+    XGOTO := XBK2CMP2;
+    if MAZELEV = 10 then
+      begin
+        Write( Chr( 12));
+        WriteLn( 'ENCHANTMENTS PREVENT SPELL FROM WORKING');
+        _done := true; exit
+      end;
+    CHARX := LLBASE04;
+    Write( Chr( 12));
+    WriteLn( 'PARTY LOCATION:');
+    WriteLn;
+    Write( 'THE PARTY IS FACING ');
+    case Byte( DIRECTIO) of
+      0: WriteLn( 'NORTH.');
+      1: WriteLn( 'EAST.');
+      2: WriteLn( 'SOUTH.');
+      3: WriteLn( 'WEST.');
+    end;
+    WriteLn;
+    Write( 'YOU ARE ');
+    Write( MAZEX);
+    WriteLn( ' SQUARES EAST AND');
+    Write( MAZEY);
+    WriteLn( ' SQUARES NORTH OF THE STAIRS');
+    Write( 'TO THE CASTLE, AND ');
+    Write( MAZELEV);
+    WriteLn( ' LEVELS');
+    WriteLn( 'BELOW IT.');
+    WriteLn;
+    WriteLn( 'L)EAVE WHEN READY');
+    repeat
+      MVCURSOR( 41, 0);
+      GETKEY
+    until INCHAR = 'L';
+    INCHAR := 'A';
+    LLBASE04 := CHARX;
+    _done := true; exit
+  end;  { DUMAPIC }
+
+
+  { ── MALOR_PROC ───────────────────────────────────────────────────────────── }
+
+  procedure MALOR_PROC;
+  var
+    DELTAUD : SmallInt;
+    DELTANS : SmallInt;
+    DELTAEW : SmallInt;
+
+
+    procedure TELEPORT;
+
+
+      procedure ROCK;
+      var X : SmallInt; XTC : ^TCHAR;
+      begin
+        WriteLn( 'YOU LANDED IN SOLID ROCK OUTSIDE THE');
+        WriteLn( 'DUNGEON - YOU ARE LOST FOREVER!');
+        for X := 0 to PARTYCNT - 1 do
+          begin
+            XTC := CHARACTR[ X];
+            XTC.INMAZE := false;
+            SETSTAT( XTC, LOST)
+          end;
+        XGOTO := XCEMETRY;
+        _done := true; exit
+      end;
+
+
+      procedure VOLCANO;
+      var X : SmallInt; XTC : ^TCHAR;
+      begin
+        WriteLn( 'YOU MATERIALIZED IN MID-AIR AND FELL');
+        WriteLn( 'TO A PAINFUL DEATH!');
+        for X := 0 to PARTYCNT - 1 do
+          begin
+            XTC := CHARACTR[ X];
+            if Byte( XTC.STATUS) < Byte( DEAD) then
+              SETSTAT( XTC, DEAD)
+          end;
+        MAZELEV := 0;
+        XGOTO := XCHK4WIN;
+        _done := true; exit
+      end;
+
+
+      procedure MOAT;
+      var X : SmallInt; XTC : ^TCHAR;
+      begin
+        WriteLn( 'YOU APPEARED IN THE CASTLE MOAT AND');
+        WriteLn( 'PROBABLY DROWNED!');
+        for X := 0 to PARTYCNT - 1 do
+          begin
+            XTC := CHARACTR[ X];
+            if Byte( XTC.STATUS) < Byte( DEAD) then
+              if (Random( 25)) > XTC.ATTRIB[ AGILITY] then
+                SETSTAT( XTC, DEAD)
+          end;
+        MAZELEV := 0;
+        XGOTO := XCHK4WIN;
+        _done := true; exit
+      end;
+
+
+      procedure TOSHOPS;
+      begin
+        XGOTO := XCHK4WIN;
+        _done := true; exit
+      end;
+
+
+      procedure BOUNCE;
+      begin
+        WriteLn( 'YOU BOUNCED BACK TO WHERE YOU WERE!');
+        _done := true; exit
+      end;
+
+
+    begin  { TELEPORT }
+      Write( Chr( 12));
+      XGOTO := XNEWMAZE;
+      if MAZELEV + DELTAUD = SCNTOC.RECPERDK[ ZMAZE] then
+        begin BOUNCE; if _done then exit end;
+      MAZEX   := MAZEX + DELTAEW;
+      MAZEY   := MAZEY + DELTANS;
+      MAZELEV := MAZELEV + DELTAUD;
+      if ((MAZEX < 0) or (MAZEX > 19) or
+          (MAZEY < 0) or (MAZEY > 19) or
+          (MAZELEV > SCNTOC.RECPERDK[ ZMAZE])) and (MAZELEV > 0) then
+        begin ROCK; if _done then exit end
+      else
+        begin
+          if MAZELEV < 0 then
+            begin VOLCANO; if _done then exit end
+          else if MAZELEV = 0 then
+            if (MAZEX = 0) and (MAZEY = 0) then
+              begin TOSHOPS; if _done then exit end
+            else
+              begin MOAT; if _done then exit end
+        end;
+      _done := true; exit
+    end;  { TELEPORT }
+
+
+  begin  { MALOR_PROC }
+    CHARX := LLBASE04;
+    Write( Chr( 12));
+    WriteLn( 'PARTY TELEPORT:');
+    WriteLn;
+    WriteLn( 'ENTER NSEWU OR D TO  SET DISPLACEMENT,');
+    WriteLn( 'THEN [RETURN] TO TELEPORT, OR [ESC] TO');
+    WriteLn( 'CHICKEN OUT!');
+    WriteLn;
+    WriteLn( '# SQUARES EAST  =');
+    WriteLn( '# SQUARES NORTH =');
+    WriteLn( '# SQUARES DOWN  =');
+    DELTAEW := 0;
+    DELTANS := 0;
+    DELTAUD := 0;
+    repeat
+      MVCURSOR( 18, 6); PRINTNUM( DELTAEW, 4);
+      MVCURSOR( 18, 7); PRINTNUM( DELTANS, 4);
+      MVCURSOR( 18, 8); PRINTNUM( DELTAUD, 4);
+      MVCURSOR( 41, 0);
+      GETKEY;
+      if INCHAR = Chr( CRETURN) then
+        begin TELEPORT; if _done then exit end
+      else
+        case INCHAR of
+          'N': DELTANS := DELTANS + 1;
+          'S': DELTANS := DELTANS - 1;
+          'E': DELTAEW := DELTAEW + 1;
+          'W': DELTAEW := DELTAEW - 1;
+          'D': DELTAUD := DELTAUD + 1;
+          'U': DELTAUD := DELTAUD - 1;
+        end
+    until INCHAR = Chr( 27);
+    XGOTO := XBK2CMP2;
+    LLBASE04 := CHARX;
+    _done := true; exit
+  end;  { MALOR_PROC }
+
+
+  { ── NEWMAZE ──────────────────────────────────────────────────────────────── }
+
+  procedure NEWMAZE;
+  var
+    MAZEMAP : TMAZE;
+    UNUSED  : array[ 0..2] of SmallInt;
+
+
+    { Helpers to access MAZEMAP pointer fields via Move() }
+    function MZFGT( X, Y: SmallInt): Byte;
+    var B: Byte;
+    begin B := 0; Move( MAZEMAP.FIGHTS^[ X*20+Y], B, 1); MZFGT := B end;
+
+    function MZNN( X, Y: SmallInt): Byte;
+    var B: Byte;
+    begin B := 0; Move( MAZEMAP.N^[ X*20+Y], B, 1); MZNN := B end;
+
+    function MZEE( X, Y: SmallInt): Byte;
+    var B: Byte;
+    begin B := 0; Move( MAZEMAP.E^[ X*20+Y], B, 1); MZEE := B end;
+
+    function MZSS( X, Y: SmallInt): Byte;
+    var B: Byte;
+    begin B := 0; Move( MAZEMAP.S^[ X*20+Y], B, 1); MZSS := B end;
+
+    function MZWW( X, Y: SmallInt): Byte;
+    var B: Byte;
+    begin B := 0; Move( MAZEMAP.W^[ X*20+Y], B, 1); MZWW := B end;
+
+    function MZSQR( X, Y: SmallInt): Byte;
+    var B: Byte;
+    begin B := 0; Move( MAZEMAP.SQREXTRA^[ X*20+Y], B, 1); MZSQR := B end;
+
+
+    procedure FIGHTS;
+    var
+      FIGHTY  : SmallInt;
+      FIGHTX  : SmallInt;
+      Y       : SmallInt;
+      X       : SmallInt;
+      _ffail  : Boolean;
+
+
+      procedure FINDSPOT;
+      var X1, Y1 : SmallInt;
+      begin
+        X1 := Random( 20);
+        Y1 := Random( 20);
+        FIGHTX := X1;
+        FIGHTY := Y1;
+        repeat
+          if MZFGT( FIGHTX, FIGHTY) = 1 then
+            if not FIGHTMAP[ FIGHTX][ FIGHTY] then
+              exit;  { EXIT(FINDSPOT) — found a spot }
+          FIGHTX := FIGHTX + 1;
+          if FIGHTX > 19 then
+            begin
+              FIGHTX := 0;
+              FIGHTY := FIGHTY + 1;
+              if FIGHTY > 19 then
+                FIGHTY := 0
+            end
+        until (FIGHTX = X1) and (FIGHTY = Y1);
+        _ffail := true; exit  { EXIT(FIGHTS) — no spot available }
+      end;  { FINDSPOT }
+
+
+      procedure FILLROOM( X, Y: SmallInt);
+      begin
+        X := (X + 20) mod 20;
+        Y := (Y + 20) mod 20;
+        if (MZFGT( X, Y) = 0) or FIGHTMAP[ X][ Y] then exit;
+        FIGHTMAP[ X][ Y] := true;
+        if MZNN( X, Y) = Byte( OPEN) then FILLROOM( X, Y + 1);
+        if MZEE( X, Y) = Byte( OPEN) then FILLROOM( X + 1, Y);
+        if MZSS( X, Y) = Byte( OPEN) then FILLROOM( X, Y - 1);
+        if MZWW( X, Y) = Byte( OPEN) then FILLROOM( X - 1, Y)
+      end;  { FILLROOM }
+
+
+    begin  { FIGHTS }
+      _ffail := false;
+      FillChar( FIGHTMAP, SizeOf( FIGHTMAP), 0);
+      for X := 1 to 9 do
+        begin
+          FINDSPOT;
+          if _ffail then exit;
+          FILLROOM( FIGHTX, FIGHTY)
+        end;
+      for X := 0 to 19 do
+        for Y := 0 to 19 do
+          if MAZEMAP.SQRETYPE[ MZSQR( X, Y)] = Byte( ENCOUNTE) then
+            FILLROOM( X, Y)
+    end;  { FIGHTS }
+
+
+  begin  { NEWMAZE }
+    if MAZELEV = 0 then
+      begin
+        Write( Chr( 12));
+        XGOTO := XCHK4WIN;
+        _done := true; exit
+      end;
+    if MAZELEV < 0 then
+      begin
+        MAZELEV := 1;
+        XGOTO := XEQUIP6
+      end
+    else
+      XGOTO := XRUNNER;
+    LOADTMAZE( MAZELEV - 1, MAZEMAP);
+    FIGHTS;
+    CLRRECT( 1, 11, 38, 4);
+    _done := true; exit
+  end;  { NEWMAZE }
+
+
+  { ── EQUIPCHR (from UTILITIE2) ────────────────────────────────────────────── }
+
+  procedure EQUIPCHR( LCHARI: SmallInt);
+  var
+    UNARMED  : Boolean;
+    CANUSE   : array[ 0..6] of Boolean;   { indexed by Byte(TOBJTYPE) }
+    UNUSED   : Boolean;
+    TEMPX    : SmallInt;
+    POSSI    : SmallInt;
+    POSSCNT  : SmallInt;
+    LUCKI    : SmallInt;
+    OBJI     : TOBJTYPE;
+    OBJI_I   : SmallInt;                   { integer runner for enum loop }
+    OBJ      : TOBJREC;
+    OBJLIST  : array[ 0..8] of SmallInt;   { [0] unused; AP: ARRAY[1..8] }
+    TC       : ^TCHAR;
+    PP       : ^TPOSSESS;
+
+
+    procedure CHSPCPOW;
+
+
+      procedure SPCPOWER;
+      var
+        SPCTEMP : SmallInt;
+        GOLD50K : TWIZLONG;
+        SPCX    : SmallInt;
+
+
+        procedure SPC1TO12( ATTR2MOD: SmallInt; MODAMT: SmallInt);
+        var ATTRX : TATTRIB;
+        begin
+          ATTRX := STRENGTH;
+          while ATTR2MOD > 1 do
+            begin
+              ATTRX := TATTRIB( Byte( ATTRX) + 1);
+              ATTR2MOD := ATTR2MOD - 1
+            end;
+          SPCTEMP := TC.ATTRIB[ ATTRX] + MODAMT;
+          if (SPCTEMP > 2) and (SPCTEMP < 19) then
+            TC.ATTRIB[ ATTRX] := SPCTEMP
+        end;
+
+
+      begin  { SPCPOWER }
+        FillChar( GOLD50K, SizeOf( GOLD50K), 0);
+        GOLD50K.XMID := 5;
+        Write( Chr( 12));
+        WriteLn( 'WILL YOU INVOKE THE SPECIAL POWER OF');
+        Write( 'YOUR ');
+        PP := TC.POSS.POSSESS[ POSSI];
+        if PP.IDENTIF then
+          Write( OBJ.NAME)
+        else
+          Write( OBJ.NAMEUNK);
+        Write( ' (Y/N) ? >');
+        repeat
+          GETKEY
+        until (INCHAR = 'Y') or (INCHAR = 'N');
+        if INCHAR = 'N' then exit;
+        if (Random( 100)) < OBJ.CHGCHANC then
+          begin
+            PP := TC.POSS.POSSESS[ POSSI];
+            PP.EQINDEX := OBJ.CHANGETO
+          end;
+        if OBJ.SPECIAL < 7 then
+          SPC1TO12( OBJ.SPECIAL, 1)
+        else
+          begin
+            if OBJ.SPECIAL < 13 then
+              SPC1TO12( OBJ.SPECIAL - 6, -1)
+            else
+              begin
+                SPCX := OBJ.SPECIAL;
+                case Byte( SPCX) of
+                  13: if TC.AGE > 1040 then TC.AGE := TC.AGE - 52;
+                  14: TC.AGE := TC.AGE + 52;
+                  15: SETXCLS( TC, SAMURAI);
+                  16: SETXCLS( TC, LORD);
+                  17: SETXCLS( TC, NINJA);
+                  18: ADDLONGS( TC.GOLD, GOLD50K);
+                  19: ADDLONGS( TC.EXP, GOLD50K);
+                  20: SETSTAT( TC, LOST);
+                  21: begin
+                        SETSTAT( TC, OK);
+                        TC.HPLEFT := TC.HPMAX;
+                        TC.LOSTXYL[ 1] := 0
+                      end;
+                  22: TC.HPMAX := TC.HPMAX + 1;
+                  23: begin
+                        for SPCTEMP := 0 to PARTYCNT - 1 do
+                          begin
+                            TC := CHARACTR[ SPCTEMP];
+                            TC.HPLEFT := TC.HPMAX
+                          end;
+                        TC := CHARACTR[ LCHARI]   { restore }
+                      end;
+                end
+              end
+          end
+      end;  { SPCPOWER }
+
+
+    begin  { CHSPCPOW }
+      TC := CHARACTR[ LCHARI];
+      for POSSI := 1 to TC.POSS.POSSCNT do
+        begin
+          PP := TC.POSS.POSSESS[ POSSI];
+          if PP.EQINDEX > 0 then
+            begin
+              LOADOBJREC( PP.EQINDEX, OBJ);
+              if OBJ.SPECIAL > 0 then
+                SPCPOWER
+            end
+        end
+    end;  { CHSPCPOW }
+
+
+    procedure NORMPOW;
+    var
+      TEMPX : SmallInt;
+      TEMPY : SmallInt;
+      POSSX : SmallInt;
+    begin
+      TC := CHARACTR[ LCHARI];
+      FillChar( CANUSE, SizeOf( CANUSE), 0);
+      for POSSX := 1 to TC.POSS.POSSCNT do
+        begin
+          PP := TC.POSS.POSSESS[ POSSX];
+          LOADOBJREC( PP.EQINDEX, OBJ);
+          if OBJ.CLASSUSE[ TC.XCLASS] then
+            CANUSE[ Byte( OBJ.OBJTYPE)] := true;
+          if TC.HEALPTS < OBJ.HEALPTS then
+            TC.HEALPTS := OBJ.HEALPTS;
+          for TEMPX := 0 to 13 do
+            TC.WEPVSTY2[ 0][ TEMPX] :=
+              TC.WEPVSTY2[ 0][ TEMPX] or OBJ.WEPVSTY2[ TEMPX];
+          for TEMPY := 0 to 6 do
+            TC.WEPVSTY3[ 0][ TEMPY] :=
+              TC.WEPVSTY3[ 0][ TEMPY] or OBJ.WEPVSTY3[ TEMPY]
+        end
+    end;  { NORMPOW }
+
+
+    procedure ARMORPOW( ACHARX: SmallInt; APOSSX: SmallInt; OBJID: SmallInt);
+    var
+      ATC : ^TCHAR;
+      APP : ^TPOSSESS;
+    begin
+      UNARMED := false;
+      LOADOBJREC( OBJID, OBJ);
+      ATC := CHARACTR[ ACHARX];
+      APP := ATC.POSS.POSSESS[ APOSSX];
+      APP.CURSED := OBJ.CURSED;
+      if (OBJ.ALIGN = UNALIGN) or
+         (Byte( OBJ.ALIGN) = Byte( ATC.ALIGN)) then
+        begin
+          if OBJ.XTRASWNG > ATC.SWINGCNT then
+            ATC.SWINGCNT := OBJ.XTRASWNG;
+          ATC.ARMORCL  := ATC.ARMORCL - OBJ.ARMORMOD;
+          ATC.HPCALCMD := ATC.HPCALCMD + OBJ.WEPHITMD;
+          if OBJ.OBJTYPE = WEAPON then
+            begin
+              LLBASE04 := ATC.HPDAMRC.HPMINAD;
+              ATC.HPDAMRC := OBJ.WEPHPDAM;
+              ATC.HPDAMRC.HPMINAD := ATC.HPDAMRC.HPMINAD + LLBASE04;
+              ATC.CRITHITM := ATC.CRITHITM or OBJ.CRITHITM;
+              ATC.WEPVSTYP := OBJ.WEPVSTYP
+            end
+        end
+      else
+        begin
+          ATC.HPCALCMD := ATC.HPCALCMD - 1;
+          ATC.ARMORCL  := ATC.ARMORCL + 1;
+          ATC.CRITHITM := false;
+          APP.CURSED   := true
+        end
+    end;  { ARMORPOW }
+
+
+    procedure ARM4CHAR;
+    var POSSX : SmallInt;
+    begin
+      TC := CHARACTR[ LCHARI];
+      for POSSX := 1 to TC.POSS.POSSCNT do
+        begin
+          PP := TC.POSS.POSSESS[ POSSX];
+          if PP.EQUIPED then
+            ARMORPOW( LCHARI, POSSX, PP.EQINDEX)
+        end
+    end;  { ARM4CHAR }
+
+
+    procedure DOEQUIP;
+
+
+      procedure EQUIPONE;
+      begin
+        repeat
+          MVCURSOR( 0, 15);
+          Write( Chr( 11));
+          Write( 'WHICH ONE ([RET] FOR NONE) ? >');
+          GETKEY;
+          if INCHAR = Chr( CRETURN) then exit;
+          POSSI := Byte( INCHAR) - Byte( '0')
+        until (POSSI > 0) and (POSSI <= POSSCNT);
+        TC := CHARACTR[ LCHARI];
+        PP := TC.POSS.POSSESS[ OBJLIST[ POSSI]];
+        PP.EQUIPED := true;
+        ARMORPOW( LCHARI, OBJLIST[ POSSI], PP.EQINDEX)
+      end;  { EQUIPONE }
+
+
+      procedure CURSBELL( CURSSTR: string);
+      var X : SmallInt;
+      begin
+        for X := 1 to Length( CURSSTR) do
+          begin
+            Write( CURSSTR[ X]);
+            Write( Chr( 7));
+            Write( Chr( 7))
+          end
+      end;
+
+
+    begin  { DOEQUIP }
+      if not CANUSE[ Byte( OBJI)] then exit;
+      Write( Chr( 12));
+      Write( 'SELECT ');
+      case Byte( OBJI) of
+        0 { WEAPON   }: Write( 'WEAPON');
+        1 { ARMOR    }: Write( 'ARMOR');
+        2 { SHIELD   }: Write( 'SHIELD');
+        3 { HELMET   }: Write( 'HELMET');
+        4 { GAUNTLET }: Write( 'GAUNTLETS');
+        6 { MISC     }: Write( 'MISC. ITEM');
+      end;
+      Write( ' FOR ');
+      TC := CHARACTR[ LCHARI];
+      WriteLn( TC.NAME);
+      WriteLn;
+      WriteLn;
+      POSSCNT := 0;
+      for POSSI := 1 to TC.POSS.POSSCNT do
+        begin
+          PP := TC.POSS.POSSESS[ POSSI];
+          if PP.EQINDEX > 0 then
+            begin
+              LOADOBJREC( PP.EQINDEX, OBJ);
+              if (OBJ.OBJTYPE = OBJI) and
+                 OBJ.CLASSUSE[ TC.XCLASS] then
+                begin
+                  POSSCNT := POSSCNT + 1;
+                  OBJLIST[ POSSCNT] := POSSI;
+                  Write( '          ');
+                  PRINTNUM( POSSCNT, 1);
+                  Write( ')');
+                  if PP.CURSED then
+                    Write( '-')
+                  else if PP.IDENTIF then
+                    Write( ' ')
+                  else
+                    Write( '?');
+                  if PP.IDENTIF then
+                    WriteLn( OBJ.NAME)
+                  else
+                    WriteLn( OBJ.NAMEUNK)
+                end
+            end
+        end;
+      TEMPX := 0;
+      for POSSI := 1 to POSSCNT do
+        begin
+          PP := TC.POSS.POSSESS[ OBJLIST[ POSSI]];
+          if PP.CURSED then TEMPX := POSSI
+        end;
+      if TEMPX = 0 then EQUIPONE;
+      TEMPX := 0;
+      for POSSI := 1 to POSSCNT do
+        begin
+          PP := TC.POSS.POSSESS[ OBJLIST[ POSSI]];
+          if PP.CURSED then TEMPX := POSSI
+        end;
+      if TEMPX > 0 then
+        begin
+          MVCURSOR( 7, 23);
+          CURSBELL( '** CURSED **');
+          PP := TC.POSS.POSSESS[ OBJLIST[ TEMPX]];
+          PP.EQUIPED := true;
+          ARMORPOW( LCHARI, OBJLIST[ TEMPX], PP.EQINDEX)
+        end
+    end;  { DOEQUIP }
+
+
+    procedure UPLCKSKL( LSSUB: SmallInt; LSMODAMT: SmallInt);
+    begin
+      TC := CHARACTR[ LCHARI];
+      LSMODAMT := TC.LUCKSKIL[ LSSUB] - LSMODAMT;
+      if LSMODAMT < 1 then LSMODAMT := 1;
+      TC.LUCKSKIL[ LSSUB] := LSMODAMT
+    end;
+
+
+    procedure INITSTUF;
+    var X, Y : SmallInt;
+    begin
+      TC := CHARACTR[ LCHARI];
+      for X := 0 to 13 do
+        begin
+          TC.WEPVSTY2[ 0][ X] := false;
+          TC.WEPVSTY2[ 1][ X] := false;
+          TC.WEPVSTYP[ X]     := false
+        end;
+      for Y := 0 to 6 do
+        begin
+          TC.WEPVSTY3[ 0][ Y] := false;
+          TC.WEPVSTY3[ 1][ Y] := false
+        end
+    end;
+
+
+  begin  { EQUIPCHR }
+    TC := CHARACTR[ LCHARI];
+    TEMPX := (20 - TC.CHARLEV div 5) - (TC.ATTRIB[ LUCK] div 6);
+    if TEMPX < 1 then TEMPX := 1;
+    for LUCKI := 0 to 4 do
+      TC.LUCKSKIL[ LUCKI] := TEMPX;
+    case TC.XCLASS of
+      FIGHTER: UPLCKSKL( 0, 3);
+      MAGE:    UPLCKSKL( 4, 3);
+      PRIEST:  UPLCKSKL( 1, 3);
+      THIEF:   UPLCKSKL( 3, 3);
+      BISHOP:  begin UPLCKSKL( 2, 2); UPLCKSKL( 4, 2); UPLCKSKL( 1, 2) end;
+      SAMURAI: begin UPLCKSKL( 0, 2); UPLCKSKL( 4, 2) end;
+      LORD:    begin UPLCKSKL( 0, 2); UPLCKSKL( 1, 2) end;
+      NINJA:   begin
+                 UPLCKSKL( 0, 3); UPLCKSKL( 1, 2);
+                 UPLCKSKL( 2, 4); UPLCKSKL( 3, 3); UPLCKSKL( 4, 2)
+               end;
+    end;
+    case TC.RACE of
+      HUMAN:  UPLCKSKL( 0, 1);
+      ELF:    UPLCKSKL( 2, 2);
+      DWARF:  UPLCKSKL( 3, 4);
+      GNOME:  UPLCKSKL( 1, 2);
+      HOBBIT: UPLCKSKL( 4, 3);
+    end;
+    if not EQUIPALL then
+      for TEMPX := 1 to 8 do
+        begin
+          PP := TC.POSS.POSSESS[ TEMPX];
+          PP.EQUIPED := false
+        end;
+    if (TC.XCLASS = PRIEST) or
+       (TC.XCLASS = FIGHTER) or
+       (Byte( TC.XCLASS) >= Byte( SAMURAI)) then
+      TC.HPCALCMD := 2 + TC.CHARLEV div 3
+    else
+      TC.HPCALCMD := TC.CHARLEV div 5;
+    TC.HPDAMRC.LEVEL   := 2;
+    TC.HPDAMRC.HPFAC   := 2;
+    TC.HPDAMRC.HPMINAD := 0;
+    if TC.ATTRIB[ STRENGTH] > 15 then
+      begin
+        TC.HPCALCMD        := TC.HPCALCMD + TC.ATTRIB[ STRENGTH] - 15;
+        TC.HPDAMRC.HPMINAD := TC.ATTRIB[ STRENGTH] - 15
+      end
+    else
+      if TC.ATTRIB[ STRENGTH] < 6 then
+        TC.HPCALCMD := TC.HPCALCMD + TC.ATTRIB[ STRENGTH] - 6;
+    TC.HEALPTS  := 0;
+    TC.CRITHITM := TC.XCLASS = NINJA;
+    TC.SWINGCNT := 1;
+    if TC.XCLASS = NINJA then
+      TC.HPDAMRC.HPFAC := 4;
+    TC.ARMORCL := 10;
+    if (TC.XCLASS = FIGHTER) or (Byte( TC.XCLASS) >= Byte( SAMURAI)) then
+      TC.SWINGCNT := TC.SWINGCNT + (TC.CHARLEV div 5) +
+                     SmallInt( TC.XCLASS = NINJA);
+    if TC.SWINGCNT > 10 then TC.SWINGCNT := 10;
+    INITSTUF;
+    NORMPOW;
+    UNARMED := true;
+    if not EQUIPALL then
+      begin
+        for OBJI_I := Byte( WEAPON) to Byte( GAUNTLET) do
+          begin OBJI := TOBJTYPE( OBJI_I); DOEQUIP end;
+        OBJI := MISC;
+        DOEQUIP;
+        CHSPCPOW
+      end
+    else
+      ARM4CHAR;
+    TC := CHARACTR[ LCHARI];
+    if TC.XCLASS = NINJA then
+      if UNARMED then
+        TC.ARMORCL := (TC.ARMORCL - (TC.CHARLEV div 3)) - 2
+  end;  { EQUIPCHR }
+
+
+  { ── EQUIP6 ───────────────────────────────────────────────────────────────── }
+
+  procedure EQUIP6;
+  var PARTYX : SmallInt;
+  begin
+    EQUIPALL := true;
+    for PARTYX := 0 to PARTYCNT - 1 do
+      EQUIPCHR( PARTYX);
+    if XGOTO = XEQUIP6 then
+      XGOTO := XINSPCT2
+    else
+      begin
+        XGOTO := XRUNNER;
+        GRAPHICS
+      end
+  end;  { EQUIP6 }
+
+
+  { ── EQUIP1 ───────────────────────────────────────────────────────────────── }
+
+  procedure EQUIP1( ACHARX: SmallInt);
+  begin
+    EQUIPALL := false;
+    EQUIPCHR( ACHARX);
+    XGOTO    := XBCK2CMP;
+    LLBASE04 := ACHARX
+  end;  { EQUIP1 }
+
+
+  { ── REORDER ──────────────────────────────────────────────────────────────── }
+
+  procedure REORDER;
+  var
+    SWITCH   : SmallInt;
+    PARTYNUM : SmallInt;
+    PARTYX   : SmallInt;
+    CHARREC  : ^TCHAR;
+    DONE     : Boolean;
+    LIST     : array[ 0..5] of SmallInt;
+    TC       : ^TCHAR;
+  begin
+    XGOTO := XINSPCT2;
+    if PARTYCNT < 2 then exit;
+    MVCURSOR( 0, 11);
+    Write( Chr( 11));
+    Write( '               REORDERING');
+    for PARTYX := 0 to PARTYCNT - 1 do
+      begin
+        LIST[ PARTYX] := 99;
+        MVCURSOR( 0, 13 + PARTYX);
+        PRINTNUM( PARTYX + 1, 1);
+        Write( ')')
+      end;
+    for PARTYX := 0 to PARTYCNT - 2 do
+      begin
+        repeat
+          DONE := false;
+          MVCURSOR( 1, 13 + PARTYX);
+          Write( '   ');
+          MVCURSOR( 1, 13 + PARTYX);
+          Write( '>>');
+          GETKEY;
+          PARTYNUM := Byte( INCHAR) - Byte( '1');
+          if (PARTYNUM >= 0) and (PARTYNUM < PARTYCNT) then
+            if LIST[ PARTYNUM] = 99 then
+              begin
+                LIST[ PARTYNUM] := PARTYX;
+                DONE := true
+              end
+        until DONE;
+        MVCURSOR( 1, 13 + PARTYX);
+        Write( ') ');
+        TC := CHARACTR[ PARTYNUM];
+        Write( TC.NAME)
+      end;
+    for PARTYX := 0 to PARTYCNT - 2 do
+      for PARTYNUM := PARTYX + 1 to PARTYCNT - 1 do
+        if LIST[ PARTYNUM] < LIST[ PARTYX] then
+          begin
+            CHARREC             := CHARACTR[ PARTYX];
+            CHARACTR[ PARTYX]   := CHARACTR[ PARTYNUM];
+            CHARACTR[ PARTYNUM] := CHARREC;
+            SWITCH               := CHARDISK[ PARTYX];
+            CHARDISK[ PARTYX]   := CHARDISK[ PARTYNUM];
+            CHARDISK[ PARTYNUM] := SWITCH;
+            SWITCH               := LIST[ PARTYX];
+            LIST[ PARTYX]        := LIST[ PARTYNUM];
+            LIST[ PARTYNUM]      := SWITCH
+          end;
+    MVCURSOR( 1, 13 + PARTYCNT - 1);
+    Write( ') ');
+    TC := CHARACTR[ PARTYCNT - 1];
+    Write( TC.NAME)
+  end;  { REORDER }
+
+
+  { ── UTILITIE main body ───────────────────────────────────────────────────── }
+
+begin
+  _done := false;
+  if XGOTO <> XNEWMAZE then TEXTMODE;
+  case XGOTO of
+    XCAMPSTF:
+      { CAMP sets XGOTO2 to indicate which sub-function to perform.
+        AP: CASE BASE12.GOTOX OF ... (BASE12.GOTOX mapped to XGOTO2) }
+      case XGOTO2 of
+        XDONE:    RDSPELLS;
+        XTRAININ: IDITEM;
+        XCASTLE:  KANDIFND;
+        XGILGAMS: DUMAPIC;
+        XINSPECT: MALOR_PROC;
+      end;
+    XNEWMAZE:   NEWMAZE;
+    XEQUIP6,
+    XCMP2EQ6:   EQUIP6;
+    XREORDER:   REORDER;
+    XEQPDSP:
+      if LLBASE04 >= 0 then
+        EQUIP1( LLBASE04)
+      else
+        begin
+          for CHARI := 0 to PARTYCNT - 1 do
+            EQUIP1( CHARI);
           XGOTO := XINSPCT2
-        ELSE
-          BEGIN
-            XGOTO := XRUNNER;
-            GRAPHICS
-          END
-      END;
-      
-      
-    PROCEDURE EQUIP1( CHARX : INTEGER);  (* P010126 *)
-    
-      BEGIN
-        EQUIPALL := FALSE;
-        EQUIPCHR( CHARX);
-        XGOTO := XBCK2CMP;
-        LLBASE04 := CHARX
-      END;
-      
-      
-
-    PROCEDURE REORDER;  (* P010127 *)
-    
-      VAR
-           SWITCH   : INTEGER;
-           PARTYNUM : INTEGER;
-           PARTYX   : INTEGER;
-           CHARREC  : TCHAR;
-           DONE     : BOOLEAN;
-           LIST     : ARRAY[ 0..5] OF INTEGER;
-           
-      BEGIN
-        XGOTO := XINSPCT2;
-        IF PARTYCNT < 2 THEN
-          EXIT( REORDER);
-        GOTOXY( 0, 11);
-        WRITE( CHR( 11));
-        WRITE( 'REORDERING' :25);
-        FOR PARTYX := 0 TO PARTYCNT - 1 DO
-          BEGIN
-            LIST[ PARTYX] := 99;
-            GOTOXY( 0, 13 + PARTYX);
-            WRITE( (PARTYX + 1) :1);
-            WRITE( ')')
-          END;
-        FOR PARTYX := 0 TO PARTYCNT - 2 DO
-          BEGIN
-            REPEAT
-              DONE := FALSE;
-              GOTOXY( 1, 13 + PARTYX);
-              WRITE( '   ');
-              GOTOXY( 1, 13 + PARTYX);
-              WRITE( '>>');
-              GETKEY;
-              PARTYNUM := ORD( INCHAR) - ORD( '1');
-              IF (PARTYNUM >= 0) AND (PARTYNUM < PARTYCNT) THEN
-                IF LIST[ PARTYNUM] = 99 THEN
-                  BEGIN
-                    LIST[ PARTYNUM] := PARTYX;
-                    DONE := TRUE
-                  END
-            UNTIL DONE;
-            GOTOXY( 1, 13 + PARTYX);
-            WRITE( ') ');
-            WRITE( CHARACTR[ PARTYNUM].NAME)
-          END;
-        FOR PARTYX := 0 TO PARTYCNT - 2 DO
-          FOR PARTYNUM := PARTYX + 1 TO PARTYCNT - 1 DO
-            IF LIST[ PARTYNUM] < LIST[ PARTYX] THEN
-              BEGIN
-                CHARREC := CHARACTR[ PARTYX];
-                CHARACTR[ PARTYX] := CHARACTR[ PARTYNUM];
-                CHARACTR[ PARTYNUM] := CHARREC;
-                SWITCH := CHARDISK[ PARTYX];
-                CHARDISK[ PARTYX] := CHARDISK[ PARTYNUM];
-                CHARDISK[ PARTYNUM] := SWITCH;
-                SWITCH := LIST[ PARTYX];
-                LIST[ PARTYX] := LIST[ PARTYNUM];
-                LIST[ PARTYNUM] := SWITCH
-              END;
-        GOTOXY( 1, 13 + PARTYCNT - 1);
-        WRITE( ') ');
-        WRITE( CHARACTR[ PARTYCNT - 1].NAME)
-      END; (* REORDER *)
+        end;
+  end
+end;  { UTILITIE }
 
 
-  BEGIN (* UTILITIE *)
-  
-    IF XGOTO <> XNEWMAZE THEN
-      TEXTMODE;
-      
-    CASE XGOTO OF
-    
-      XCAMPSTF:
-                CASE BASE12.GOTOX OF
-                  XDONE    : RDSPELLS;
-                  XTRAININ : IDITEM;
-                  XCASTLE  : KANDIFND;
-                  XGILGAMS : DUMAPIC;
-                  XINSPECT : MALOR_PROC;
-                END;
-        
-      XNEWMAZE:  NEWMAZE;
-      
-      XEQUIP6,
-      XCMP2EQ6:  EQUIP6;
-      
-      XREORDER:  REORDER;
-      
-      XEQPDSP:   IF LLBASE04 >= 0 THEN
-                   EQUIP1( LLBASE04)
-                 ELSE
-                   BEGIN
-                     FOR CHARI := 0 TO PARTYCNT - 1 DO
-                       EQUIP1( CHARI);
-                     XGOTO := XINSPCT2
-                   END;
-    END;
-
-  END; (* UTILITIE *)
+end.
