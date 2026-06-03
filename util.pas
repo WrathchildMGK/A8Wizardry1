@@ -64,31 +64,34 @@ procedure PRINTBEL;
 procedure PAUSE1;
 procedure PAUSE2;
 
-{ Record loaders — allocate MP pointer fields; deserialize AP disk format.
-  TODO: wire up actual AP-format unpack once Atari disk I/O is stable. }
+{ Mode E screen buffer — exported so other units can blit directly. }
+const SCRWIDTH = 40;   { Mode E bytes per scanline (160 px / 4 px per byte) }
+var   SCRNBUF  : array[ 0..7679] of Byte;
+
+{ Record loaders — allocate MP pointer fields; deserialize AP disk format. }
 procedure LOADTMAZE ( LEVEL: SmallInt; var MAZE: TMAZE);
+procedure SAVETMAZE ( LEVEL: SmallInt; var MAZE: TMAZE);
 procedure LOADTCHAR ( INDEX: SmallInt; var CH:   TCHAR);
 procedure SAVETCHAR ( INDEX: SmallInt; var CH:   TCHAR);
 procedure LOADOBJREC( INDEX: SmallInt; var OBJ:  TOBJREC);
 procedure SAVEOBJREC( INDEX: SmallInt; var OBJ:  TOBJREC);
 procedure LOADENEMY ( INDEX: SmallInt; var ENM:  TENEMY);
+procedure LOADTEXP  ( var EXP: TEXP);
 
 implementation
 
 { ── Mode E display layer ─────────────────────────────────────────────────── }
 
 const
-  SCRWIDTH = 40;   { Mode E bytes per scanline (160px / 4px per byte) }
   CHARH    = 8;    { scanlines per character row }
   CHARCOLS = 40;   { character columns (160px / 4px) }
   CHARROWS = 24;   { character rows (192px / 8px) }
 
 var
-  CURX    : SmallInt;
-  CURY    : SmallInt;
-  SCRNBUF : array[ 0..7679] of Byte;   { ANTIC Mode E screen bitmap }
-  DLIST   : array[ 0..215]  of Byte;   { ANTIC display list }
-  CHRTAB  : array[ 0..255]  of Byte;   { blit LUT: TCHRIMAG byte → Mode E byte }
+  CURX   : SmallInt;
+  CURY   : SmallInt;
+  DLIST  : array[ 0..215] of Byte;   { ANTIC display list }
+  CHRTAB : array[ 0..255] of Byte;   { blit LUT: TCHRIMAG byte -> Mode E byte }
 
 { ── Disk I/O — Mad Pascal file operations ────────────────────────────────── }
 
@@ -850,6 +853,32 @@ begin
     Move( IOCACHE[$360 + (I-1)*10], MAZE.ENMYCALC[I]^, SizeOf(TENMYCALC))
 end;
 
+
+procedure SAVETMAZE( LEVEL: SmallInt; var MAZE: TMAZE);
+{ Writes SQRETYPE and AUX0/1/2 back to disk — the only fields mutated at runtime.
+  Walls/FIGHTS/SQREXTRA are read-only during play; GETRECW reloads them from disk
+  if the cache was evicted. }
+var
+  I   : SmallInt;
+  B   : SmallInt;
+  SQ  : SmallInt;
+begin
+  B := GETRECW( ZMAZE, LEVEL, 784);
+
+  { SQRETYPE: 4-bit TSQUARE, 2 per byte, low nibble = even index }
+  for I := 0 to 7 do
+    begin
+      SQ := (Ord(MAZE.SQRETYPE[I*2]) and $F) or ((Ord(MAZE.SQRETYPE[I*2 + 1]) and $F) shl 4);
+      IOCACHE[760 + I] := Chr(SQ)
+    end;
+
+  { AUX0/AUX1/AUX2: 16 x LE INTEGER each }
+  Move( MAZE.AUX0[0], IOCACHE[768], 32);
+  Move( MAZE.AUX1[0], IOCACHE[800], 32);
+  Move( MAZE.AUX2[0], IOCACHE[832], 32)
+end;
+
+
 { Load TCHAR from disk (ZCHAR slot INDEX).
   AP disk layout (206 bytes used; DATASIZE=256, RECPER2BL=4):
     0  2xSTRING[15]                   NAME PASSWORD
@@ -1355,6 +1384,26 @@ begin
   W := Byte( IOCACHE[B + 156]) or (Word( Byte( IOCACHE[B + 157])) shl 8);
   for I := 0 to 15 do
     ENM.SPPC[I] := (W shr I) and 1 <> 0
+end;
+
+
+procedure LOADTEXP( var EXP: TEXP);
+{ Load ZEXP experience table (104 entries = 8 classes x 13 levels).
+  AP disk layout: 104 x TWIZLONG (6 bytes each = 624 bytes).
+  Index = Ord(CLASS)*13 + LEVEL (LEVEL 0..12).
+  TWIZLONG disk order HIGH,MID,LOW -> MP XHIGH,XMID,XLOW.
+  RECPER2BL[ZEXP]=1: GETREC always returns 0; full table in IOCACHE[0..623]. }
+var
+  I, B : SmallInt;
+begin
+  B := GETREC( ZEXP, 0, 624);
+  for I := 0 to 103 do
+    begin
+      if EXP[I] = nil then GetMem( EXP[I]);
+      Move( IOCACHE[B + I*6    ], EXP[I]^.XHIGH, 2);
+      Move( IOCACHE[B + I*6 + 2], EXP[I]^.XMID,  2);
+      Move( IOCACHE[B + I*6 + 4], EXP[I]^.XLOW,  2)
+    end
 end;
 
 end.

@@ -223,7 +223,7 @@ var
       var I : SmallInt;
       begin
         CLRRECT( 0, 0, 40, 24);
-        { TODO: load border charset from block SCNTOCBL+2 into CHARSET }
+        UNITREAD_BUF( SCNTOCBL + 2, CHARSET[ 0]);  { border/UI charset }
         SCRNOUTL; HORZLINE( 10); HORZLINE( 15);
         MVCURSOR( 12, 0); PRINTCHR( Chr( 91));
         for I := 1 to 9 do begin MVCURSOR( 12, I); PRINTCHR( Chr( 92)) end;
@@ -231,7 +231,7 @@ var
         for I := 13 to 38 do PRINTCHR( Chr( 34));
         PRINTCHR( Chr( 40));
         MVCURSOR( 12, 10); PRINTCHR( Chr( 94));
-        { TODO: load combat charset from block SCNTOCBL+1 into CHARSET }
+        UNITREAD_BUF( SCNTOCBL + 1, CHARSET[ 0]);  { combat/game charset }
         MVCURSOR( 1, 16);
         PRINTSTR( '# CHARACTER NAME  CLASS AC HITS STATUS')
       end;
@@ -647,7 +647,7 @@ var
               if AUX0 < 0 then
                 if AUX0 > -1000 then MAZEFLOR.AUX0[ BOUNCEFL] := 0
                 else                  AUX0 := AUX0 + 1000;
-            { TODO: SAVETMAZE( MAZELEV-1, MAZEFLOR) }
+            SAVETMAZE( MAZELEV - 1, MAZEFLOR);
           end
       end;
     CLRRECT( 1, 11, 38, 4);

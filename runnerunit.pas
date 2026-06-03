@@ -545,8 +545,7 @@ procedure RUNNER;
             MAZE.AUX0[ SQTYPE] := MAZE.AUX0[ SQTYPE] - 1;
             if MAZE.AUX0[ SQTYPE] = 0 then
               MAZE.SQRETYPE[ SQTYPE] := Byte( NORMAL);
-            { TODO: SAVETMAZE(MAZELEV-1, MAZE) — write encounter count and
-                    square type back to disk once Atari I/O is wired up }
+            SAVETMAZE( MAZELEV - 1, MAZE);
           end;
         _done := true; exit
       end;

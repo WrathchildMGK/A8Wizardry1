@@ -22,7 +22,7 @@ unit SHOPUNIT;
     - READKEY -> GETKEY.
     - case TSTATUS -> case Byte() with integer literals (bug4 avoidance).
     - EXPBONUS.MID=25 -> XMID=25 (250,000 XP = 25 * 10000).
-    - UNITREAD (CHARSET) calls: skipped (TODO Atari charset load). }
+    - UNITREAD (CHARSET) calls: UNITREAD_BUF(SCNTOCBL+1/2, CHARSET[0]) at swap points. }
 
 interface
 

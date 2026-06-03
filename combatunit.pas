@@ -51,9 +51,17 @@ procedure COMBAT;
   procedure CINIT;
 
     procedure ENEMYPIC( ENEMYID: SmallInt);
+    { ENEMYID = GETREC(ZSPCCHRS, BTB.PIC, 512) return value = IOCACHE offset.
+      IOCACHE[ENEMYID..+499]: Atari ANTIC-E portrait, 50 rows x 10 bytes.
+      Row layout: 9 data bytes (36 Mode-E 2bpp pixels = ~72 TV dots) + 1 zero pad.
+      Blit to SCRNBUF rows 0..49, columns 0..8 (top-left portrait area). }
+    var
+      ROW : SmallInt;
     begin
-      { Atari stub — Apple II HGR monster picture render not ported. }
-      CLRPICT( 0, 0, 0, 100)
+      for ROW := 0 to 49 do
+        Move( IOCACHE[ENEMYID + ROW * 10],
+              SCRNBUF[ROW * SCRWIDTH],
+              9)
     end;
 
 

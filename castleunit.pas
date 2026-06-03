@@ -638,10 +638,8 @@ procedure CASTLE;
          EXPNXTLV: TWIZLONG;
          CLSIDX  : SmallInt;
          TC      : ^TCHAR;
-    var  EXI     : SmallInt;
     begin
-      { AP: MOVELEFT from IOCACHE; stub: allocate zeroed entries }
-      for EXI := 0 to 103 do GetMem( EXP2NEXT[ EXI]);
+      LOADTEXP( EXP2NEXT);
       TC := CHARACTR[ _partyx];
       CLSIDX := Ord( TCLASS( TC.XCLASS)) * 13;
       if TC.CHARLEV <= 12 then

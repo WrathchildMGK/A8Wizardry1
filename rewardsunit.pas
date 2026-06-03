@@ -46,9 +46,8 @@ type
     REWDCALC : array[ 0..6] of SmallInt;
   end;
 
-  { REWARDXX extended to 0..9; [0] unused (AP: ARRAY[1..9]).
-    MP requires array-of-^RECORD inside records; pointer elements used here.
-    TODO: proper deserialization when Atari disk I/O is wired up. }
+  { REWARDXX[0..9]; [0] unused (AP: ARRAY[1..9]).
+    Pointer array avoids nested record-in-record; RDREWARD allocates [1..9]. }
   TREWARD = record
     BCHEST   : Boolean;
     BTRAPTYP : array[ 0..7] of Boolean;
@@ -80,9 +79,13 @@ procedure REWARDS;
 
 
   { ── PIC2SCRN ── }
-  { AP: copies 10 bytes/scanline from IOCACHE to Apple lo-res video RAM.
-    Atari screen addressing is completely different; stub until Atari GFX done. }
+  { BUFFERI = GETREC(ZSPCCHRS, INDEX, 512) return value = IOCACHE offset.
+    IOCACHE[BUFFERI..+499]: Atari ANTIC-E portrait, 50 rows x 10 bytes.
+    Row layout: 9 data bytes (36 Mode-E 2bpp pixels = ~72 TV dots) + 1 zero pad.
+    Blit to SCRNBUF rows 0..49, columns 0..8 (top-left portrait area). }
   procedure PIC2SCRN( BUFFERI: SmallInt);
+  { Atari stub — portraits not yet displayed. Mad Pascal compiler crashes on any loop
+    in this procedure context (rewardsunit at procedure-level nesting). }
   begin
   end;
 
@@ -165,11 +168,38 @@ procedure REWARDS;
 
 
     { ── RDREWARD ── }
+    { AP disk layout (168 bytes, RECPER2BL=6):
+        +0  2  BCHEST   (AP 2-byte BOOLEAN)
+        +2  2  BTRAPTYP (8-bit packed, bits 0-7)
+        +4  2  REWRDCNT (INTEGER)
+        +6  9x18  REWARDXX[1..9]: each TREWARDX = REWDPERC(2)+BITEM(2)+REWDCALC(7x2=14) }
     procedure RDREWARD;
+    var
+      B, I, J : SmallInt;
+      W       : Word;
+      RX      : ^TREWARDX;
     begin
-      Move( IOCACHE[ GETREC( ZREWARD, REWARDI, SizeOf( TREWARD))],
-            REWARDZ,
-            SizeOf( TREWARD))
+      B := GETREC( ZREWARD, REWARDI, 168);
+
+      FillChar( REWARDZ, SizeOf( TREWARD), 0);
+
+      REWARDZ.BCHEST := (Byte( IOCACHE[B]) or Byte( IOCACHE[B + 1])) <> 0;
+
+      W := Byte( IOCACHE[B + 2]) or (Word( Byte( IOCACHE[B + 3])) shl 8);
+      for I := 0 to 7 do
+        REWARDZ.BTRAPTYP[I] := (W shr I) and 1 <> 0;
+
+      Move( IOCACHE[B + 4], REWARDZ.REWRDCNT, 2);
+
+      for I := 1 to 9 do
+        begin
+          GetMem( REWARDZ.REWARDXX[I]);
+          RX := REWARDZ.REWARDXX[I];
+          J  := B + 6 + (I - 1) * 18;
+          Move( IOCACHE[J],     RX.REWDPERC,    2);
+          Move( IOCACHE[J + 2], RX.BITEM,        2);
+          Move( IOCACHE[J + 4], RX.REWDCALC[0], 14)
+        end
     end;
 
 
@@ -881,9 +911,7 @@ procedure REWARDS;
       end;
 
     begin  { CHKDRAIN }
-      Move( IOCACHE[ GETREC( ZEXP, 0, SizeOf( TEXP))],
-            EXPTABLE,
-            SizeOf( TEXP));
+      LOADTEXP( EXPTABLE);
       KILLEXP.XHIGH := 0;
       KILLEXP.XMID  := 0;
       KILLEXP.XLOW  := 1;
