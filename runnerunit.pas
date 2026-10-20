@@ -369,6 +369,7 @@ procedure RUNNER;
 
   procedure ENCOUNTR;
   var
+    PMAZE    : ^TMAZE;    { MAZE.ENMYCALC[] only via a pointer (mpbugs/bug10) }
     ENCTYPE  : SmallInt;
     ENEMYI   : SmallInt;
     ENCCALC  : SmallInt;
@@ -381,7 +382,8 @@ procedure RUNNER;
     ENCTYPE := 1;
     while (Random( 4) = 2) and (ENCTYPE < 3) do
       ENCTYPE := ENCTYPE + 1;
-    ENCREC := MAZE.ENMYCALC[ ENCTYPE];
+    PMAZE  := @MAZE;
+    ENCREC := PMAZE.ENMYCALC[ ENCTYPE];
     ENCCALC := 0;
     while (Random( 100) < ENCREC.PERCWORS) and (ENCCALC < ENCREC.WORSE01) do
       ENCCALC := ENCCALC + 1;

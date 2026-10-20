@@ -37,12 +37,6 @@ implementation
 function GETNAME_S( var C: TCHAR): string;
 begin GETNAME_S := C.NAME end;
 
-function GETGOLD_S( var C: TCHAR): TWIZLONG;
-begin GETGOLD_S := C.GOLD end;
-
-procedure SETGOLD_S( var C: TCHAR; G: TWIZLONG);
-begin C.GOLD.XLOW := G.XLOW; C.GOLD.XMID := G.XMID; C.GOLD.XHIGH := G.XHIGH end;
-
 { ── SHOPS ────────────────────────────────────────────────────────────────── }
 
 procedure SHOPS;
@@ -116,7 +110,6 @@ procedure SHOPS;
         procedure GETPAYER;
         var
           TC : ^TCHAR;
-          G  : TWIZLONG;
         begin
           PAYAMT.XHIGH := 0;
           PAYAMT.XMID  := 0;
@@ -136,12 +129,10 @@ procedure SHOPS;
           if WHOPAY = -1 then
             begin shopDone := true; exit end;
           TC := CHARACTR[ WHOPAY];
-          if TESTLONG( PAYAMT, GETGOLD_S( TC^)) > 0 then
+          if TESTLONG( PAYAMT, TC.GOLD) > 0 then
             begin DSP2STR( '', 'CHEAP APOSTATES! OUT!'); exit end;
           if shopDone then exit;
-          G := GETGOLD_S( TC^);
-          SUBLONGS( G, PAYAMT);
-          SETGOLD_S( TC^, G)
+          SUBLONGS( TC.GOLD, PAYAMT)
         end;
 
 
@@ -313,7 +304,6 @@ procedure SHOPS;
           INSERTX : SmallInt;
           TC      : ^TCHAR;
           TP      : ^TPOSSESS;
-          G       : TWIZLONG;
         begin
           repeat
             NOTPURCH := false;
@@ -330,8 +320,7 @@ procedure SHOPS;
             begin CENTSTR( '** YOU BOUGHT THE LAST ONE **'); exit end;
           if TC.POSS.POSSCNT = 8 then
             begin CENTSTR( '** YOU CANT CARRY ANYTHING MORE **'); exit end;
-          G := GETGOLD_S( TC^);
-          if TESTLONG( G, XOBJECT.PRICE) < 0 then
+          if TESTLONG( TC.GOLD, XOBJECT.PRICE) < 0 then
             begin CENTSTR( '** YOU CANNOT AFFORD IT **'); exit end;
           if not XOBJECT.CLASSUSE[ TC.XCLASS] then
             begin
@@ -346,9 +335,7 @@ procedure SHOPS;
             end
           else
             INCHAR := ' ';
-          G := GETGOLD_S( TC^);
-          SUBLONGS( G, XOBJECT.PRICE);
-          SETGOLD_S( TC^, G);
+          SUBLONGS( TC.GOLD, XOBJECT.PRICE);
           INSERTX := TC.POSS.POSSCNT + 1;
           TP := TC.POSS.POSSESS[ INSERTX];
           TP.EQUIPED := false;
@@ -386,7 +373,7 @@ procedure SHOPS;
           Write( Chr( 11));
           Write( 'YOU HAVE ');
           TCC := CHARACTR[ CHARI];
-          PRNTLONG( GETGOLD_S( TCC^));
+          PRNTLONG( TCC.GOLD);
           WriteLn( ' GOLD');
           WriteLn( 'YOU MAY P)URCHASE, SCROLL');
           Write( ' ': 8);
@@ -455,7 +442,6 @@ procedure SHOPS;
           TC    : ^TCHAR;
           TP    : ^TPOSSESS;
           TP2   : ^TPOSSESS;
-          G     : TWIZLONG;
         begin
           LOADOBJREC( OBJLIST[ TRANOBJX], XOBJECT);
           DIVLONG( XOBJECT.PRICE, HALFPRIC);
@@ -478,16 +464,13 @@ procedure SHOPS;
                 begin CENTSTR( '** THAT IS NOT A CURSED ITEM **'); exit end;
               if TP.IDENTIF and (ACTION = IDENTIFY) then
                 begin CENTSTR( '** THAT HAS BEEN IDENTIFIED **'); exit end;
-              G := GETGOLD_S( TC^);
-              if TESTLONG( G, XOBJECT.PRICE) < 0 then
+              if TESTLONG( TC.GOLD, XOBJECT.PRICE) < 0 then
                 begin CENTSTR( '** YOU CANT AFFORD THE FEE **'); exit end
             end;
-          G := GETGOLD_S( TC^);
           if ACTION = SELL then
-            ADDLONGS( G, XOBJECT.PRICE)
+            ADDLONGS( TC.GOLD, XOBJECT.PRICE)
           else
-            SUBLONGS( G, XOBJECT.PRICE);
-          SETGOLD_S( TC^, G);
+            SUBLONGS( TC.GOLD, XOBJECT.PRICE);
           if ACTION = IDENTIFY then
             TP.IDENTIF := true
           else
@@ -552,7 +535,7 @@ procedure SHOPS;
         Write( GETNAME_S( TC^));
         WriteLn( '');
         Write( '     YOU HAVE ');
-        PRNTLONG( GETGOLD_S( TC^));
+        PRNTLONG( TC.GOLD);
         WriteLn( ' GOLD');
         WriteLn( '');
         WriteLn( 'YOU MAY B)UY  AN ITEM,');
@@ -599,6 +582,7 @@ procedure SHOPS;
     var
       TOMBY : SmallInt;
       TOMBX : SmallInt;
+      TC    : ^TCHAR;
 
 
       procedure DSPTOMBL( TOMBCHRS: string);
@@ -622,9 +606,10 @@ procedure SHOPS;
       DSPTOMBL( '?XYZ');   { CHR(63) CHR(88) CHR(89) CHR(90) — last line jumps XYZ }
       UNITREAD_BUF( SCNTOCBL + 1, CHARSET[0]);   { restore normal charset }
       MVCURSOR( TOMBX + 1, TOMBY - 2);
-      PRINTNUM( CHARACTR[ CHARI]^.AGE div 52, 2);
+      TC := CHARACTR[ CHARI];
+      PRINTNUM( TC.AGE div 52, 2);
       MVCURSOR( TOMBX + 4, TOMBY - 4);
-      PRINTSTR( GETNAME_S( CHARACTR[ CHARI]^))
+      PRINTSTR( GETNAME_S( TC^))
     end;
 
 
@@ -662,7 +647,6 @@ procedure SHOPS;
 
     var
       TC : ^TCHAR;
-      G  : TWIZLONG;
 
     begin { BADSTUFF }
       TWO := 2;
@@ -674,9 +658,7 @@ procedure SHOPS;
               if TC.STATUS < DEAD then
                 TC.STATUS := DEAD;
               TC.INMAZE := false;
-              G := GETGOLD_S( TC^);
-              DIVLONG( G, TWO);
-              SETGOLD_S( TC^, G);
+              DIVLONG( TC.GOLD, TWO);
               BREAKPOS;
               if Random( 50) < MAZELEV then
                 begin

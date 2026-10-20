@@ -43,16 +43,6 @@ var
 function GETNAME_C( var C: TCHAR): string;
 begin GETNAME_C := C.NAME end;
 
-function GETGOLD_C( var C: TCHAR): TWIZLONG;
-begin GETGOLD_C := C.GOLD end;
-
-procedure SETGOLD_C( var C: TCHAR; G: TWIZLONG);
-begin
-  C.GOLD.XLOW  := G.XLOW;
-  C.GOLD.XMID  := G.XMID;
-  C.GOLD.XHIGH := G.XHIGH
-end;
-
 { ── Hoisted level-4+ procedures (ADVNTINN sub-tree) ──────────────────────── }
 
 { --- SETSPELS helpers --- }
@@ -309,16 +299,14 @@ end;
 { --- Inn healing loop body --- }
 
 procedure HEALHP;
-var PAUSEX : SmallInt; TC : ^TCHAR; G : TWIZLONG;
+var PAUSEX : SmallInt; TC : ^TCHAR;
 begin
   MVCURSOR( 0, 13);
   TC := CHARACTR[ _partyx];
   TC.HPLEFT := TC.HPLEFT + _hpadd;
   if TC.HPLEFT > TC.HPMAX then
     TC.HPLEFT := TC.HPMAX;
-  G := GETGOLD_C( CHARACTR[ _partyx]^);
-  SUBLONGS( G, _gold4nap);
-  SETGOLD_C( CHARACTR[ _partyx]^, G);
+  SUBLONGS( TC.GOLD, _gold4nap);
   Write( TC.NAME);
   WriteLn( ' IS HEALING UP');
   WriteLn;
@@ -331,8 +319,7 @@ begin
   WriteLn;
   WriteLn;
   Write( '               GOLD  ');
-  G := GETGOLD_C( CHARACTR[ _partyx]^);
-  PRNTLONG( G);
+  PRNTLONG( TC.GOLD);
   MVCURSOR( 41, 10);
   for PAUSEX := 1 to 500 do
     begin end
@@ -518,14 +505,14 @@ procedure CASTLE;
       CHARNAME := GTSTRING;
       if (CHARNAME = '') or (Length( CHARNAME) > 15) then exit;
       CHARI    := 0;
-      LOADTCHAR( CHARI, CHARACTR[ PARTYCNT]^);
       TC_SLOT := CHARACTR[ PARTYCNT];
+      LOADTCHAR( CHARI, TC_SLOT^);
       while (CHARI < SCNTOC.RECPERDK[ ZCHAR]) and
             ((CHARNAME <> TC_SLOT.NAME) or
              (TC_SLOT.STATUS = LOST)) do
         begin
           CHARI := CHARI + 1;
-          LOADTCHAR( CHARI, CHARACTR[ PARTYCNT]^)
+          LOADTCHAR( CHARI, TC_SLOT^)
         end;
       if CHARI = SCNTOC.RECPERDK[ ZCHAR] then
         begin CENTSTR( '** WHO? **'); exit end;
@@ -543,7 +530,7 @@ procedure CASTLE;
         begin CENTSTR( '** THATS NOT IT **'); exit end;
       CHARDISK[ PARTYCNT] := CHARI;
       TC_SLOT.INMAZE := true;
-      SAVETCHAR( CHARI, CHARACTR[ PARTYCNT]^);
+      SAVETCHAR( CHARI, TC_SLOT^);
       PARTYCNT := PARTYCNT + 1;
       GETALIGN;
       LLBASE04 := GETREC( ZZERO, 0, SizeOf( TSCNTOC));
@@ -553,12 +540,13 @@ procedure CASTLE;
 
 
     procedure REMOVE;
-    var CHARX, CHARI : SmallInt;
+    var CHARX, CHARI : SmallInt; TC : ^TCHAR;
     begin
       CHARI := GETCHARX( false, 'WHO WILL LEAVE');
       if (CHARI < 0) or (CHARI >= PARTYCNT) then exit;
-      CHARACTR[ CHARI].INMAZE := false;
-      SAVETCHAR( CHARDISK[ CHARI], CHARACTR[ CHARI]^);
+      TC := CHARACTR[ CHARI];
+      TC.INMAZE := false;
+      SAVETCHAR( CHARDISK[ CHARI], TC^);
       if CHARI <> (PARTYCNT - 1) then
         for CHARX := (CHARI + 1) to (PARTYCNT - 1) do
           begin
@@ -634,6 +622,7 @@ procedure CASTLE;
 
     procedure CHNEWLEV;
     var EXP2NEXT : TEXP;
+         PEXP    : ^TWIZLONG;   { EXP2NEXT[]^ only via a pointer (mpbugs/bug10) }
          BIGLEV  : SmallInt;
          EXPNXTLV: TWIZLONG;
          CLSIDX  : SmallInt;
@@ -643,12 +632,17 @@ procedure CASTLE;
       TC := CHARACTR[ _partyx];
       CLSIDX := Ord( TCLASS( TC.XCLASS)) * 13;
       if TC.CHARLEV <= 12 then
-        EXPNXTLV := EXP2NEXT[ CLSIDX + TC.CHARLEV]^
+        begin
+          PEXP     := EXP2NEXT[ CLSIDX + TC.CHARLEV];
+          EXPNXTLV := PEXP^
+        end
       else
         begin
-          EXPNXTLV := EXP2NEXT[ CLSIDX + 12]^;
+          PEXP     := EXP2NEXT[ CLSIDX + 12];
+          EXPNXTLV := PEXP^;
+          PEXP     := EXP2NEXT[ CLSIDX];
           for BIGLEV := 13 to TC.CHARLEV do
-            ADDLONGS( EXPNXTLV, EXP2NEXT[ CLSIDX]^)
+            ADDLONGS( EXPNXTLV, PEXP^)
         end;
       if TESTLONG( EXPNXTLV, TC.EXP) <= 0 then
         MADELEV
@@ -664,7 +658,7 @@ procedure CASTLE;
 
 
     procedure TAKENAP( HPADD, GOLDAMT: SmallInt);
-    var TC : ^TCHAR; G : TWIZLONG;
+    var TC : ^TCHAR;
     begin
       _hpadd           := HPADD;
       _gold4nap.XHIGH  := 0;
@@ -674,16 +668,10 @@ procedure CASTLE;
       Write( Chr( 11));
       TC := CHARACTR[ _partyx];
       if GOLDAMT > 0 then
-        begin
-          G := GETGOLD_C( CHARACTR[ _partyx]^);
-          while (TESTLONG( G, _gold4nap) >= 0) and
-                (TC.HPLEFT < TC.HPMAX) and
-                (Peek( $02FC) = $FF) do    { $FF = no key available }
-            begin
-              HEALHP;
-              G := GETGOLD_C( CHARACTR[ _partyx]^)
-            end
-        end
+        while (TESTLONG( TC.GOLD, _gold4nap) >= 0) and
+              (TC.HPLEFT < TC.HPMAX) and
+              (Peek( $02FC) = $FF) do    { $FF = no key available }
+          HEALHP
       else
         begin
           Write( TC.NAME);

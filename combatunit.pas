@@ -2772,6 +2772,8 @@ procedure COMBAT;
     BRC : ^TENEMY2;
     BRA : ^TENEMY2A;
     BRB : ^TENEMY;
+    PT  : ^TTEMP04;     { BRA.TEMP04[]^ / BRB.RECS[]^ only via a pointer (mpbugs/bug10) }
+    PH  : ^THPREC;
   begin
     for I := 0 to 4 do
       begin
@@ -2787,12 +2789,14 @@ procedure COMBAT;
         for J := 0 to 8 do
           begin
             GetMem( BRA.TEMP04[ J]);
-            FillChar( BRA.TEMP04[ J]^, SizeOf( TTEMP04), 0)
+            PT := BRA.TEMP04[ J];
+            FillChar( PT^, SizeOf( TTEMP04), 0)
           end;
         for J := 1 to 7 do
           begin
             GetMem( BRB.RECS[ J]);
-            FillChar( BRB.RECS[ J]^, SizeOf( THPREC), 0)
+            PH := BRB.RECS[ J];
+            FillChar( PH^, SizeOf( THPREC), 0)
           end
       end
   end;

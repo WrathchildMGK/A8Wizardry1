@@ -165,6 +165,8 @@ procedure REWARDS;
     INDX     : SmallInt;
     GOLD2ONE : TWIZLONG;
     REWARDZ  : TREWARD;
+    PRWZ     : ^TREWARD;    { REWARDZ.REWARDXX[] only via a pointer (mpbugs/bug10) }
+    RXZ      : ^TREWARDX;
 
 
     { ── RDREWARD ── }
@@ -178,8 +180,10 @@ procedure REWARDS;
       B, I, J : SmallInt;
       W       : Word;
       RX      : ^TREWARDX;
+      PRW     : ^TREWARD;   { REWARDZ.REWARDXX[] only via a pointer (mpbugs/bug10) }
     begin
       B := GETREC( ZREWARD, REWARDI, 168);
+      PRW := @REWARDZ;
 
       FillChar( REWARDZ, SizeOf( TREWARD), 0);
 
@@ -193,8 +197,8 @@ procedure REWARDS;
 
       for I := 1 to 9 do
         begin
-          GetMem( REWARDZ.REWARDXX[I]);
-          RX := REWARDZ.REWARDXX[I];
+          GetMem( PRW.REWARDXX[I]);
+          RX := PRW.REWARDXX[I];
           J  := B + 6 + (I - 1) * 18;
           Move( IOCACHE[J],     RX.REWDPERC,    2);
           Move( IOCACHE[J + 2], RX.BITEM,        2);
@@ -757,7 +761,9 @@ procedure REWARDS;
     PIC2SCRN( GETREC( ZSPCCHRS, 19, 512));
     for INDX := 1 to REWARDZ.REWRDCNT do
       begin
-        GETREWRD( REWARDZ.REWARDXX[ INDX]^);
+        PRWZ := @REWARDZ;
+        RXZ  := PRWZ.REWARDXX[ INDX];
+        GETREWRD( RXZ^);
         if _done then exit
       end;
     GIVEGOLD
@@ -880,6 +886,7 @@ procedure REWARDS;
     procedure CHKDRAIN;
     var
       EXPTABLE : TEXP;
+      PEXP     : ^TWIZLONG;   { EXPTABLE[]^ only via a pointer (mpbugs/bug10) }
       TC_CK    : PTCHAR;
 
       { ── DROPLEVL ── }
@@ -895,12 +902,17 @@ procedure REWARDS;
         if CURRLEVL = 0 then
           FillChar( CHAREXP, SizeOf( CHAREXP), 0)
         else if CURRLEVL < 13 then
-          CHAREXP := EXPTABLE[ Ord( XCLASS_P) * 13 + CURRLEVL]^
+          begin
+            PEXP    := EXPTABLE[ Ord( XCLASS_P) * 13 + CURRLEVL];
+            CHAREXP := PEXP^
+          end
         else
           begin
-            CHAREXP := EXPTABLE[ Ord( XCLASS_P) * 13 + 12]^;
+            PEXP    := EXPTABLE[ Ord( XCLASS_P) * 13 + 12];
+            CHAREXP := PEXP^;
+            PEXP    := EXPTABLE[ Ord( XCLASS_P) * 13 + 0];
             for CHARXXX := 13 to CURRLEVL do
-              ADDLONGS( CHAREXP, EXPTABLE[ Ord( XCLASS_P) * 13 + 0]^)
+              ADDLONGS( CHAREXP, PEXP^)
           end;
         ADDLONGS( CHAREXP, KILLEXP);
         MVCURSOR( 1, 14);

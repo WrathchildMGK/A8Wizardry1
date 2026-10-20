@@ -40,19 +40,6 @@ begin
   C.STATUS := TSTATUS( Byte( S))
 end;
 
-function GETGOLD( var C: TCHAR): TWIZLONG;
-begin
-  GETGOLD := C.GOLD
-end;
-
-procedure SETGOLD( var C: TCHAR; G: TWIZLONG);
-begin
-  C.GOLD.XLOW  := G.XLOW;
-  C.GOLD.XMID  := G.XMID;
-  C.GOLD.XHIGH := G.XHIGH
-end;
-
-
 procedure SPECIALS;
 var
   SPCINDEX : SmallInt;
@@ -101,6 +88,7 @@ var
 
 
     procedure PICKUP;
+    var TC : ^TCHAR;
     begin
       if PARTYCNT = 6 then
         begin
@@ -118,14 +106,15 @@ var
         if PICKCHAR = 0 then exit
       until (PICKCHAR > 0) and (PICKCHAR <= PICKCNT);
       if PICKLIST[ PICKCHAR] = -1 then exit;
-      FillChar( CHARACTR[ PARTYCNT]^, SizeOf( TCHAR), 0);
-      LOADTCHAR( PICKLIST[ PICKCHAR], CHARACTR[ PARTYCNT]^);
+      TC := CHARACTR[ PARTYCNT];
+      FillChar( TC^, SizeOf( TCHAR), 0);
+      LOADTCHAR( PICKLIST[ PICKCHAR], TC^);
       CHARDISK[ PARTYCNT]             := PICKLIST[ PICKCHAR];
       CHARACTR[ PARTYCNT].LOSTXYL[1] := 0;
       CHARACTR[ PARTYCNT].LOSTXYL[2] := 0;
       CHARACTR[ PARTYCNT].LOSTXYL[3] := 0;
       CHARACTR[ PARTYCNT].INMAZE     := true;
-      SAVETCHAR( PICKLIST[ PICKCHAR], CHARACTR[ PARTYCNT]^);
+      SAVETCHAR( PICKLIST[ PICKCHAR], TC^);
       PICKLIST[ PICKCHAR] := -1;
       PARTYCNT := PARTYCNT + 1;
       MVCURSOR( 0, 3 + PICKCHAR); Write( Chr( 29))
@@ -328,20 +317,21 @@ var
 
 
     function GOTITEM( CHARX, ITEMX: SmallInt): Boolean;
-    var POSSX : SmallInt; PP : ^TPOSSESS;
+    var POSSX : SmallInt; PP : ^TPOSSESS; TC : ^TCHAR;
     begin
       GOTITEM := false;
-      if CHARACTR[ CHARX].POSS.POSSCNT = 8 then exit;
-      for POSSX := 1 to CHARACTR[ CHARX].POSS.POSSCNT do
+      TC := CHARACTR[ CHARX];
+      if TC.POSS.POSSCNT = 8 then exit;
+      for POSSX := 1 to TC.POSS.POSSCNT do
         begin
-          PP := GETPOSS( CHARACTR[ CHARX]^, POSSX);
+          PP := GETPOSS( TC^, POSSX);
           if PP.EQINDEX = ITEMX then exit
         end;
       CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11);
-      PRINTSTR( GETNAME( CHARACTR[ CHARX]^)); PRINTSTR( ' GOT ITEM');
-      POSSX := CHARACTR[ CHARX].POSS.POSSCNT + 1;
-      CHARACTR[ CHARX].POSS.POSSCNT := POSSX;
-      PP := GETPOSS( CHARACTR[ CHARX]^, POSSX);
+      PRINTSTR( GETNAME( TC^)); PRINTSTR( ' GOT ITEM');
+      POSSX := TC.POSS.POSSCNT + 1;
+      TC.POSS.POSSCNT := POSSX;
+      PP := GETPOSS( TC^, POSSX);
       PP.EQINDEX := ITEMX;
       PP.EQUIPED := false;
       PP.CURSED  := false;
@@ -421,7 +411,7 @@ var
                    TC.HPLEFT := TC.HPMAX
                  end
                else
-                 SETSTAT( CHARACTR[ WADEX]^, ASHES)
+                 SETSTAT( TC^, ASHES)
              end
       end
     end;
@@ -440,14 +430,17 @@ var
 
 
     procedure ITM2PASS;
-    var POSX, CHARX : SmallInt; PP : ^TPOSSESS;
+    var POSX, CHARX : SmallInt; PP : ^TPOSSESS; TC : ^TCHAR;
     begin
       for CHARX := 0 to PARTYCNT - 1 do
-        for POSX := 1 to CHARACTR[ CHARX].POSS.POSSCNT do
-          begin
-            PP := GETPOSS( CHARACTR[ CHARX]^, POSX);
-            if PP.EQINDEX = AUX0 then exit
-          end;
+        begin
+          TC := CHARACTR[ CHARX];
+          for POSX := 1 to TC.POSS.POSSCNT do
+            begin
+              PP := GETPOSS( TC^, POSX);
+              if PP.EQINDEX = AUX0 then exit
+            end
+        end;
       BOUNCEBK  { no party member carries AUX0 item — block passage }
     end;
 
@@ -519,11 +512,14 @@ var
       end;
 
       procedure CHKGOLD;
-      var CHARX : SmallInt;
+      var CHARX : SmallInt; TC : ^TCHAR;
       begin
         FillChar( GOLDTOT, 6, 0);
         for CHARX := 0 to PARTYCNT - 1 do
-          ADDLONGS( GOLDTOT, GETGOLD( CHARACTR[ CHARX]^));
+          begin
+            TC := CHARACTR[ CHARX];
+            ADDLONGS( GOLDTOT, TC.GOLD)
+          end;
         if TESTLONG( GOLDTOT, FEE) <> -1 then exit;
         PRINTSTR( 'NOT ENOUGH $');
         if BOUNCEFL = 0 then BOUNCEBK;
@@ -531,23 +527,21 @@ var
       end;
 
       procedure PAYGOLD;
-      var CHARX : SmallInt; LOCALG : TWIZLONG;
+      var CHARX : SmallInt; TC : ^TCHAR;
       begin
         FillChar( GOLDTOT, 6, 0);
         for CHARX := 0 to PARTYCNT - 1 do
           if TESTLONG( FEE, GOLDTOT) <> 0 then
             begin
-              LOCALG := GETGOLD( CHARACTR[ CHARX]^);
-              if TESTLONG( FEE, LOCALG) = 1 then
+              TC := CHARACTR[ CHARX];
+              if TESTLONG( FEE, TC.GOLD) = 1 then
                 begin
-                  SUBLONGS( FEE, LOCALG);
-                  FillChar( LOCALG, 6, 0);
-                  SETGOLD( CHARACTR[ CHARX]^, LOCALG)
+                  SUBLONGS( FEE, TC.GOLD);
+                  FillChar( TC.GOLD, 6, 0)
                 end
               else
                 begin
-                  SUBLONGS( LOCALG, FEE);
-                  SETGOLD( CHARACTR[ CHARX]^, LOCALG);
+                  SUBLONGS( TC.GOLD, FEE);
                   FillChar( FEE, 6, 0)
                 end
             end;

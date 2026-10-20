@@ -30,8 +30,8 @@ procedure UNITREAD_MSG( BLOCK: SmallInt; var BUF);
 procedure LOADSCNTOC;
 
 { TWIZLONG arithmetic (P010005-P01000B, WIZ2.TEXT) }
-procedure ADDLONGS ( var FIRST: TWIZLONG; SECOND: TWIZLONG);
-procedure SUBLONGS ( var FIRST: TWIZLONG; SECOND: TWIZLONG);
+procedure ADDLONGS ( var FIRST: TWIZLONG; var SECOND: TWIZLONG);
+procedure SUBLONGS ( var FIRST: TWIZLONG; var SECOND: TWIZLONG);
 function  TESTLONG( FIRST, SECOND: TWIZLONG): SmallInt;
 procedure MULTLONG( var LONGNUM: TWIZLONG; INTNUM: SmallInt);
 procedure DIVLONG ( var LONGNUM: TWIZLONG; INTNUM: SmallInt);
@@ -273,7 +273,7 @@ end;
 
 { ── TWIZLONG arithmetic ──────────────────────────────────────────────────── }
 
-procedure ADDLONGS( var FIRST: TWIZLONG; SECOND: TWIZLONG);
+procedure ADDLONGS( var FIRST: TWIZLONG; var SECOND: TWIZLONG);
 begin
   FIRST.XLOW := FIRST.XLOW + SECOND.XLOW;
   if FIRST.XLOW >= 10000 then
@@ -296,7 +296,7 @@ begin
     end
 end;
 
-procedure SUBLONGS( var FIRST: TWIZLONG; SECOND: TWIZLONG);
+procedure SUBLONGS( var FIRST: TWIZLONG; var SECOND: TWIZLONG);
 begin
   FIRST.XLOW := FIRST.XLOW - SECOND.XLOW;
   if FIRST.XLOW < 0 then
@@ -793,6 +793,7 @@ procedure LOADTMAZE( LEVEL: SmallInt; var MAZE: TMAZE);
 var
   I, X, Y : SmallInt;
   WP      : ^Byte;
+  EC      : ^TENMYCALC;   { MAZE.ENMYCALC[]^ only via a pointer (mpbugs/bug10) }
 begin
   I := GETREC( ZMAZE, LEVEL, 784);
   { RECPER2BL[ZMAZE]=1: BUFFADDR always 0; full 1024-byte block loaded into IOCACHE }
@@ -850,7 +851,10 @@ begin
 
   { ENMYCALC[1..3]: 3 x TENMYCALC (10 bytes each); index 0 is unused }
   for I := 1 to 3 do
-    Move( IOCACHE[$360 + (I-1)*10], MAZE.ENMYCALC[I]^, SizeOf(TENMYCALC))
+    begin
+      EC := MAZE.ENMYCALC[I];
+      Move( IOCACHE[$360 + (I-1)*10], EC^, SizeOf(TENMYCALC))
+    end
 end;
 
 
@@ -1333,9 +1337,10 @@ end;
   AP TWIZLONG disk order is HIGH,MID,LOW; MP is XHIGH,XMID,XLOW — not byte-compatible. }
 procedure LOADENEMY( INDEX: SmallInt; var ENM: TENEMY);
 var
-  I : SmallInt;
-  B : SmallInt;
-  W : Word;
+  I  : SmallInt;
+  B  : SmallInt;
+  W  : Word;
+  HR : ^THPREC;         { ENM.RECS[]^ only via a pointer (mpbugs/bug10) }
 begin
   B := GETREC( ZENEMY, INDEX, 158);
   FillChar( ENM, SizeOf( TENEMY), 0);
@@ -1364,7 +1369,8 @@ begin
   for I := 1 to 7 do
     begin
       if ENM.RECS[I] = nil then GetMem( ENM.RECS[I]);
-      Move( IOCACHE[B + 84 + (I-1)*6], ENM.RECS[I]^, 6)
+      HR := ENM.RECS[I];
+      Move( IOCACHE[B + 84 + (I-1)*6], HR^, 6)
     end;
 
   { EXPAMT (TWIZLONG): disk HIGH→XHIGH, MID→XMID, LOW→XLOW }
@@ -1395,14 +1401,16 @@ procedure LOADTEXP( var EXP: TEXP);
   RECPER2BL[ZEXP]=1: GETREC always returns 0; full table in IOCACHE[0..623]. }
 var
   I, B : SmallInt;
+  PE   : ^TWIZLONG;     { EXP[]^ only via a pointer (mpbugs/bug10) }
 begin
   B := GETREC( ZEXP, 0, 624);
   for I := 0 to 103 do
     begin
       if EXP[I] = nil then GetMem( EXP[I]);
-      Move( IOCACHE[B + I*6    ], EXP[I]^.XHIGH, 2);
-      Move( IOCACHE[B + I*6 + 2], EXP[I]^.XMID,  2);
-      Move( IOCACHE[B + I*6 + 4], EXP[I]^.XLOW,  2)
+      PE := EXP[I];
+      Move( IOCACHE[B + I*6    ], PE.XHIGH, 2);
+      Move( IOCACHE[B + I*6 + 2], PE.XMID,  2);
+      Move( IOCACHE[B + I*6 + 4], PE.XLOW,  2)
     end
 end;
 

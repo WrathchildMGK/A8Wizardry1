@@ -62,6 +62,9 @@ procedure ROLLER;
 
 var
   CHARREC  : TCHAR;
+  PCHARREC : ^TCHAR;      { = @CHARREC: MP 1.7.9 needs pointer arrays inside a
+                            record reached through a pointer (mpbugs/bug10) }
+  PSLOT    : ^TCHAR;      { CHARACTR[ 0], for whole-record copies }
   TEMPX    : SmallInt;
   CHARACX  : SmallInt;
   PTSLEFT  : SmallInt;
@@ -191,14 +194,17 @@ var
     var
       LSI : SmallInt;
       I   : SmallInt;
+      PP  : ^TPOSSESS;
     begin
       FillChar( CHARREC, SizeOf( CHARREC), 0);
       GetMem( CHARREC.SPELLSKN);                  { allocate SPELLSKN pointer }
       FillChar( CHARREC.SPELLSKN^, SizeOf( TSPELLSKN), 0);
       for I := 0 to 8 do                         { allocate possession slots }
         begin
-          GetMem( CHARREC.POSS.POSSESS[ I]);
-          FillChar( CHARREC.POSS.POSSESS[ I]^, SizeOf( TPOSSESS), 0)
+          PCHARREC := @CHARREC;
+          GetMem( PCHARREC.POSS.POSSESS[ I]);
+          PP := PCHARREC.POSS.POSSESS[ I];
+          FillChar( PP^, SizeOf( TPOSSESS), 0)
         end;
       CHARREC.NAME      := CHARNAME;
       CHARREC.AGE       := (18 * 52) + Random( 300);
@@ -589,7 +595,8 @@ var
     procedure INSPECT;
     begin
       PARTYCNT      := 1;
-      CHARACTR[ 0]^ := CHARREC;
+      PSLOT  := CHARACTR[ 0];
+      PSLOT^ := CHARREC;
       CHARDISK[ 0]  := CHARACX;
       XGOTO         := XINSPCT3;
       _done         := true; exit   { EXIT(ROLLER) }
@@ -678,7 +685,8 @@ var
         end;
       for TEMPX := 1 to CHARREC.POSS.POSSCNT do
         begin
-          PP := CHARREC.POSS.POSSESS[ TEMPX];
+          PCHARREC := @CHARREC;
+          PP := PCHARREC.POSS.POSSESS[ TEMPX];
           if not PP.CURSED then PP.EQUIPED := false
         end;
       SAVETCHAR( CHARACX, CHARREC);
@@ -738,7 +746,8 @@ var
     else
       begin
         XGOTO   := XTRAININ;
-        CHARREC := CHARACTR[ 0]^;
+        PSLOT   := CHARACTR[ 0];
+        CHARREC := PSLOT^;
         CHARACX := CHARDISK[ 0]
       end;
 
