@@ -29,6 +29,14 @@ begin
   CHARACTR[3] := @CHAR_SLOT3;
   CHARACTR[4] := @CHAR_SLOT4;
   CHARACTR[5] := @CHAR_SLOT5;
+  { CHARACTR is always a permutation of these six slots; party order is
+    changed by swapping pointers, never by copying records. }
+  WIRECHAR( CHAR_SLOT0, CHAR_SKN0, CHAR_POSS0);
+  WIRECHAR( CHAR_SLOT1, CHAR_SKN1, CHAR_POSS1);
+  WIRECHAR( CHAR_SLOT2, CHAR_SKN2, CHAR_POSS2);
+  WIRECHAR( CHAR_SLOT3, CHAR_SKN3, CHAR_POSS3);
+  WIRECHAR( CHAR_SLOT4, CHAR_SKN4, CHAR_POSS4);
+  WIRECHAR( CHAR_SLOT5, CHAR_SKN5, CHAR_POSS5);
   SCNTOC.SPELLS := @SPELBLK_DATA;
 
   repeat

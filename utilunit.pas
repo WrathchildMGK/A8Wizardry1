@@ -33,6 +33,10 @@ implementation
 
 var
   _done   : Boolean;
+  MZB_W, MZB_S, MZB_E, MZB_N : TMAZEMAP;    { maze backing (WIREMAZE); one set per }
+  MZB_FIGHTS : TFIGHTMAP;                   { segment, as only one floor is loaded }
+  MZB_SQX    : TSQRMAP;
+  MZB_EC     : TECBLK;
   CHARI   : SmallInt;   { shared across EQUIPCHR/EQUIP6/EQUIP1 }
   CHARX   : SmallInt;   { shared across RDSPELLS/IDITEM/KANDIFND/DUMAPIC/MALOR }
   EQUIPALL : Boolean;
@@ -241,6 +245,8 @@ procedure UTILITIE;
     CHARXDSK  : SmallInt;
     LOCSTRING : string[ 40];
     LOSTCHAR  : TCHAR;
+    LCSKN     : TSPELLSKN;     { LOSTCHAR's wired spell list and possessions }
+    LCPOSS    : TPOSSBLK;
 
 
     procedure EXITKAND;
@@ -292,6 +298,7 @@ procedure UTILITIE;
 
 
   begin  { KANDIFND }
+    WIRECHAR( LOSTCHAR, LCSKN, LCPOSS);
     CHARX := LLBASE04;
     Write( Chr( 12));
     WriteLn( 'LOCATE BODIES');
@@ -509,30 +516,24 @@ procedure UTILITIE;
     UNUSED  : array[ 0..2] of SmallInt;
 
 
-    { Helpers to access MAZEMAP pointer fields via Move() }
+    { MAZEMAP cell readers: MAZEMAP is wired to the MZB_* arrays (WIREMAZE). }
     function MZFGT( X, Y: SmallInt): Byte;
-    var B: Byte;
-    begin B := 0; Move( MAZEMAP.FIGHTS^[ X*20+Y], B, 1); MZFGT := B end;
+    begin MZFGT := MZB_FIGHTS[ X*20+Y] end;
 
     function MZNN( X, Y: SmallInt): Byte;
-    var B: Byte;
-    begin B := 0; Move( MAZEMAP.N^[ X*20+Y], B, 1); MZNN := B end;
+    begin MZNN := MZB_N[ X*20+Y] end;
 
     function MZEE( X, Y: SmallInt): Byte;
-    var B: Byte;
-    begin B := 0; Move( MAZEMAP.E^[ X*20+Y], B, 1); MZEE := B end;
+    begin MZEE := MZB_E[ X*20+Y] end;
 
     function MZSS( X, Y: SmallInt): Byte;
-    var B: Byte;
-    begin B := 0; Move( MAZEMAP.S^[ X*20+Y], B, 1); MZSS := B end;
+    begin MZSS := MZB_S[ X*20+Y] end;
 
     function MZWW( X, Y: SmallInt): Byte;
-    var B: Byte;
-    begin B := 0; Move( MAZEMAP.W^[ X*20+Y], B, 1); MZWW := B end;
+    begin MZWW := MZB_W[ X*20+Y] end;
 
     function MZSQR( X, Y: SmallInt): Byte;
-    var B: Byte;
-    begin B := 0; Move( MAZEMAP.SQREXTRA^[ X*20+Y], B, 1); MZSQR := B end;
+    begin MZSQR := MZB_SQX[ X*20+Y] end;
 
 
     procedure FIGHTS;
@@ -598,6 +599,7 @@ procedure UTILITIE;
 
 
   begin  { NEWMAZE }
+    WIREMAZE( MAZEMAP, MZB_W, MZB_S, MZB_E, MZB_N, MZB_FIGHTS, MZB_SQX, MZB_EC);
     if MAZELEV = 0 then
       begin
         Write( Chr( 12));

@@ -231,6 +231,11 @@ type
     B : ^TENEMY;                    { AP: inline TENEMY (156 bytes) }
   end;                              { 4 bytes }
 
+const
+  TENEMY2_SIZE = 4;                 { SizeOf( TENEMY2) wrongly gives 0 (mpbugs/bug11) }
+
+type
+
   { --- Maze level ---
     AP TMAZE size: ~784 bytes.  Large fields moved to heap via pointers.
     Values stored as Byte per cell (AP used 2-bit packed for walls, etc.) }
@@ -270,6 +275,17 @@ type
     104 elements x 2 bytes = 208 bytes. }
 
   TEXP = array[ 0..103] of ^TWIZLONG;
+
+  { --- Static backing stores for the pointer fields above ---
+    Nothing is heap-allocated: each pointer field is wired (util.pas
+    WIRECHAR/WIREMAZE/WIREENEMY/WIREEXP) to a fixed block owned by whoever
+    owns the record.  The blocks are byte arrays because MP 1.7.9
+    miscompiles arrays of records; elements are contiguous, [0] first. }
+
+  TPOSSBLK = array[ 0..9 * SizeOf( TPOSSESS) - 1]   of Byte;  { TCHAR.POSS.POSSESS[0..8] }
+  TECBLK   = array[ 0..4 * SizeOf( TENMYCALC) - 1]  of Byte;  { TMAZE.ENMYCALC[0..3]    }
+  TRECSBLK = array[ 0..8 * SizeOf( THPREC) - 1]     of Byte;  { TENEMY.RECS[0..7]        }
+  TEXPBLK  = array[ 0..104 * SizeOf( TWIZLONG) - 1] of Byte;  { TEXP[0..103]             }
 
   { --- Scenario message buffer (used by SPCMISC/DECRYPTM) --- }
   TSTRBUFF = record

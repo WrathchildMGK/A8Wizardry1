@@ -62,6 +62,8 @@ procedure ROLLER;
 
 var
   CHARREC  : TCHAR;
+  CRSKN    : TSPELLSKN;   { CHARREC's wired spell list and possessions }
+  CRPOSS   : TPOSSBLK;
   PCHARREC : ^TCHAR;      { = @CHARREC: MP 1.7.9 needs pointer arrays inside a
                             record reached through a pointer (mpbugs/bug10) }
   PSLOT    : ^TCHAR;      { CHARACTR[ 0], for whole-record copies }
@@ -193,19 +195,8 @@ var
     procedure INITCHAR;
     var
       LSI : SmallInt;
-      I   : SmallInt;
-      PP  : ^TPOSSESS;
     begin
-      FillChar( CHARREC, SizeOf( CHARREC), 0);
-      GetMem( CHARREC.SPELLSKN);                  { allocate SPELLSKN pointer }
-      FillChar( CHARREC.SPELLSKN^, SizeOf( TSPELLSKN), 0);
-      for I := 0 to 8 do                         { allocate possession slots }
-        begin
-          PCHARREC := @CHARREC;
-          GetMem( PCHARREC.POSS.POSSESS[ I]);
-          PP := PCHARREC.POSS.POSSESS[ I];
-          FillChar( PP^, SizeOf( TPOSSESS), 0)
-        end;
+      CLEARCHAR( CHARREC);
       CHARREC.NAME      := CHARNAME;
       CHARREC.AGE       := (18 * 52) + Random( 300);
       CHARREC.GOLD.XLOW := 90 + Random( 100);
@@ -596,7 +587,7 @@ var
     begin
       PARTYCNT      := 1;
       PSLOT  := CHARACTR[ 0];
-      PSLOT^ := CHARREC;
+      COPYCHAR( PSLOT^, CHARREC);
       CHARDISK[ 0]  := CHARACX;
       XGOTO         := XINSPCT3;
       _done         := true; exit   { EXIT(ROLLER) }
@@ -747,7 +738,7 @@ var
       begin
         XGOTO   := XTRAININ;
         PSLOT   := CHARACTR[ 0];
-        CHARREC := PSLOT^;
+        COPYCHAR( CHARREC, PSLOT^);
         CHARACX := CHARDISK[ 0]
       end;
 
@@ -793,6 +784,7 @@ var
 
 
 begin  { ROLLER }
+  WIRECHAR( CHARREC, CRSKN, CRPOSS);
   _done := false;
   if XGOTO = XBCK2ROL then
     begin TRAINING; if _done then exit; end;

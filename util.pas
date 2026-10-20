@@ -68,7 +68,18 @@ procedure PAUSE2;
 const SCRWIDTH = 40;   { Mode E bytes per scanline (160 px / 4 px per byte) }
 var   SCRNBUF  : array[ 0..7679] of Byte;
 
-{ Record loaders — allocate MP pointer fields; deserialize AP disk format. }
+{ Static wiring of record pointer fields (no heap: see types.pas TPOSSBLK).
+  A record must be wired once before it is loaded or used; the loaders and
+  CLEARCHAR/COPYCHAR keep the wiring.  Pointed-to blocks are contiguous. }
+procedure WIRECHAR ( var C: TCHAR; var SKN: TSPELLSKN; var POSS: TPOSSBLK);
+procedure CLEARCHAR( var C: TCHAR);                 { zero data, keep wiring }
+procedure COPYCHAR ( var DST: TCHAR; var SRC: TCHAR); { deep copy, DST keeps its wiring }
+procedure WIREMAZE ( var M: TMAZE; var W, S, E, N: TMAZEMAP; var FIGHTS: TFIGHTMAP;
+                     var SQREXTRA: TSQRMAP; var EC: TECBLK);
+procedure WIREENEMY( var ENM: TENEMY; var RECS: TRECSBLK);
+procedure WIREEXP  ( var EXP: TEXP; var BLK: TEXPBLK);
+
+{ Record loaders — deserialize AP disk format into wired records. }
 procedure LOADTMAZE ( LEVEL: SmallInt; var MAZE: TMAZE);
 procedure SAVETMAZE ( LEVEL: SmallInt; var MAZE: TMAZE);
 procedure LOADTCHAR ( INDEX: SmallInt; var CH:   TCHAR);
@@ -765,6 +776,121 @@ begin
   for I := 0 to 3000 do begin end
 end;
 
+{ ── Static wiring of record pointer fields ───────────────────────────────── }
+
+procedure SETPOSS( PC: PTCHAR; A: Word);
+{ Point POSS.POSSESS[0..8] at consecutive TPOSSESS starting at A. }
+var
+  I : Byte;
+begin
+  for I := 0 to 8 do
+    begin
+      PC.POSS.POSSESS[ I] := Pointer( A);
+      Inc( A, SizeOf( TPOSSESS))
+    end
+end;
+
+procedure WIRECHAR( var C: TCHAR; var SKN: TSPELLSKN; var POSS: TPOSSBLK);
+var
+  PC : PTCHAR;
+begin
+  PC := @C;
+  PC.SPELLSKN := @SKN;
+  SETPOSS( PC, Word( @POSS))
+end;
+
+procedure CLEARCHAR( var C: TCHAR);
+var
+  PC  : PTCHAR;
+  SKN : PTSPELLSKN;
+  P0  : PByte;
+begin
+  PC  := @C;
+  SKN := PC.SPELLSKN;
+  P0  := PByte( PC.POSS.POSSESS[ 0]);
+  FillChar( C, SizeOf( TCHAR), 0);
+  PC.SPELLSKN := SKN;
+  SETPOSS( PC, Word( P0));
+  FillChar( SKN^, SizeOf( TSPELLSKN), 0);
+  FillChar( P0^, SizeOf( TPOSSBLK), 0)
+end;
+
+procedure COPYCHAR( var DST: TCHAR; var SRC: TCHAR);
+{ AP copies TCHAR by value; here the pointed-to spell and possession data
+  is copied too, so DST never shares SRC's storage. }
+var
+  PD, PS     : PTCHAR;
+  DSKN, SSKN : PTSPELLSKN;
+  D0, S0     : PByte;
+begin
+  PD   := @DST;
+  PS   := @SRC;
+  DSKN := PD.SPELLSKN;
+  D0   := PByte( PD.POSS.POSSESS[ 0]);
+  SSKN := PS.SPELLSKN;
+  S0   := PByte( PS.POSS.POSSESS[ 0]);
+  Move( SRC, DST, SizeOf( TCHAR));
+  PD.SPELLSKN := DSKN;
+  SETPOSS( PD, Word( D0));
+  Move( SSKN^, DSKN^, SizeOf( TSPELLSKN));   { not PS.SPELLSKN^: mpbugs/bug10 }
+  Move( S0^, D0^, SizeOf( TPOSSBLK))
+end;
+
+procedure WIREMAZE( var M: TMAZE; var W, S, E, N: TMAZEMAP; var FIGHTS: TFIGHTMAP;
+                    var SQREXTRA: TSQRMAP; var EC: TECBLK);
+var
+  PM : ^TMAZE;
+  I  : Byte;
+  A  : Word;
+begin
+  PM := @M;
+  PM.W        := @W;
+  PM.S        := @S;
+  PM.E        := @E;
+  PM.N        := @N;
+  PM.FIGHTS   := @FIGHTS;
+  PM.SQREXTRA := @SQREXTRA;
+  A := Word( @EC);
+  for I := 0 to 3 do
+    begin
+      PM.ENMYCALC[ I] := Pointer( A);
+      Inc( A, SizeOf( TENMYCALC))
+    end
+end;
+
+procedure SETRECS( PE: Pointer; A: Word);
+{ Point TENEMY.RECS[0..7] at consecutive THPREC starting at A. }
+var
+  P : ^TENEMY;
+  I : Byte;
+begin
+  P := PE;
+  for I := 0 to 7 do
+    begin
+      P.RECS[ I] := Pointer( A);
+      Inc( A, SizeOf( THPREC))
+    end
+end;
+
+procedure WIREENEMY( var ENM: TENEMY; var RECS: TRECSBLK);
+begin
+  SETRECS( @ENM, Word( @RECS))
+end;
+
+procedure WIREEXP( var EXP: TEXP; var BLK: TEXPBLK);
+var
+  I : Byte;
+  A : Word;
+begin
+  A := Word( @BLK);
+  for I := 0 to 103 do
+    begin
+      EXP[ I] := Pointer( A);
+      Inc( A, SizeOf( TWIZLONG))
+    end
+end;
+
+
 { ── Record loaders (stubs) ───────────────────────────────────────────────── }
 
 { Load a maze floor from SCENARIO.DATA and unpack AP packed format.
@@ -798,14 +924,7 @@ begin
   I := GETREC( ZMAZE, LEVEL, 784);
   { RECPER2BL[ZMAZE]=1: BUFFADDR always 0; full 1024-byte block loaded into IOCACHE }
 
-  if MAZE.W        = nil then GetMem( MAZE.W);
-  if MAZE.S        = nil then GetMem( MAZE.S);
-  if MAZE.E        = nil then GetMem( MAZE.E);
-  if MAZE.N        = nil then GetMem( MAZE.N);
-  if MAZE.FIGHTS   = nil then GetMem( MAZE.FIGHTS);
-  if MAZE.SQREXTRA = nil then GetMem( MAZE.SQREXTRA);
-  for I := 0 to 3 do
-    if MAZE.ENMYCALC[I] = nil then GetMem( MAZE.ENMYCALC[I]);
+  { MAZE must already be wired (WIREMAZE). }
 
   { Wall maps: column X (0..19), row Y (0..19).
     Byte = base + X*6 + Y div 4.  Bit-pair = (Y mod 4)*2. }
@@ -917,7 +1036,7 @@ var
 begin
   B  := GETREC( ZCHAR, INDEX, 256);
   TC := PTCHAR(@CH);
-  FillChar( CH, SizeOf( TCHAR), 0);
+  CLEARCHAR( CH);                 { CH must already be wired (WIRECHAR) }
 
   { Strings }
   Move( IOCACHE[B +  0], CH.NAME[0],     16);
@@ -959,8 +1078,7 @@ begin
   Move( IOCACHE[B + 58], CH.POSS.POSSCNT, 2);
   for I := 1 to 8 do
     begin
-      if CH.POSS.POSSESS[I] = nil then GetMem( CH.POSS.POSSESS[I]);
-      PP := CH.POSS.POSSESS[I];
+      PP := TC.POSS.POSSESS[I];
       J  := B + 60 + (I - 1) * 8;
       PP.EQUIPED := (Byte( IOCACHE[J    ]) or Byte( IOCACHE[J + 1])) <> 0;
       PP.CURSED  := (Byte( IOCACHE[J + 2]) or Byte( IOCACHE[J + 3])) <> 0;
@@ -977,7 +1095,6 @@ begin
   Move( IOCACHE[B + 130], CH.MAXLEVAC, 8);
 
   { SPELLSKN: 50 bits in 4 LE words at +138; bit I = word I/16 bit I mod 16 }
-  if TC.SPELLSKN = nil then GetMem( TC.SPELLSKN);
   SKN := TC.SPELLSKN;
   for I := 0 to 49 do
     begin
@@ -1343,7 +1460,9 @@ var
   HR : ^THPREC;         { ENM.RECS[]^ only via a pointer (mpbugs/bug10) }
 begin
   B := GETREC( ZENEMY, INDEX, 158);
+  W := Word( ENM.RECS[ 0]);       { ENM must already be wired (WIREENEMY) }
   FillChar( ENM, SizeOf( TENEMY), 0);
+  SETRECS( @ENM, W);
 
   { 4 x STRING[15]: 16 bytes each (1 len + 15 chars, no pad) }
   Move( IOCACHE[B +  0], ENM.NAMEUNK[0],  16);
@@ -1368,7 +1487,6 @@ begin
   { RECS[1..7]: 7 x THPREC inline on disk (42 bytes); RECS[0] stays nil }
   for I := 1 to 7 do
     begin
-      if ENM.RECS[I] = nil then GetMem( ENM.RECS[I]);
       HR := ENM.RECS[I];
       Move( IOCACHE[B + 84 + (I-1)*6], HR^, 6)
     end;
@@ -1406,8 +1524,7 @@ begin
   B := GETREC( ZEXP, 0, 624);
   for I := 0 to 103 do
     begin
-      if EXP[I] = nil then GetMem( EXP[I]);
-      PE := EXP[I];
+      PE := EXP[I];                { EXP must already be wired (WIREEXP) }
       Move( IOCACHE[B + I*6    ], PE.XHIGH, 2);
       Move( IOCACHE[B + I*6 + 2], PE.XMID,  2);
       Move( IOCACHE[B + I*6 + 4], PE.XLOW,  2)

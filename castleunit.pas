@@ -540,18 +540,26 @@ procedure CASTLE;
 
 
     procedure REMOVE;
-    var CHARX, CHARI : SmallInt; TC : ^TCHAR;
+    var CHARX, CHARI, DISKX : SmallInt; TC : ^TCHAR;
     begin
       CHARI := GETCHARX( false, 'WHO WILL LEAVE');
       if (CHARI < 0) or (CHARI >= PARTYCNT) then exit;
       TC := CHARACTR[ CHARI];
       TC.INMAZE := false;
       SAVETCHAR( CHARDISK[ CHARI], TC^);
+      { AP copies TCHAR records down.  CHARACTR holds pointers to the six
+        fixed slots, so swap instead: the leaver's slot rotates to the end
+        and CHARACTR stays a permutation of the slots (no two entries may
+        share a slot, or the next ADDPARTY would overwrite a member). }
       if CHARI <> (PARTYCNT - 1) then
         for CHARX := (CHARI + 1) to (PARTYCNT - 1) do
           begin
+            TC := CHARACTR[ CHARX - 1];
             CHARACTR[ CHARX - 1] := CHARACTR[ CHARX];
-            CHARDISK[ CHARX - 1] := CHARDISK[ CHARX]
+            CHARACTR[ CHARX]     := TC;
+            DISKX := CHARDISK[ CHARX - 1];
+            CHARDISK[ CHARX - 1] := CHARDISK[ CHARX];
+            CHARDISK[ CHARX]     := DISKX
           end;
       PARTYCNT := PARTYCNT - 1;
       GETALIGN;
@@ -622,12 +630,14 @@ procedure CASTLE;
 
     procedure CHNEWLEV;
     var EXP2NEXT : TEXP;
+         EXP2BLK : TEXPBLK;     { EXP2NEXT's wired entries }
          PEXP    : ^TWIZLONG;   { EXP2NEXT[]^ only via a pointer (mpbugs/bug10) }
          BIGLEV  : SmallInt;
          EXPNXTLV: TWIZLONG;
          CLSIDX  : SmallInt;
          TC      : ^TCHAR;
     begin
+      WIREEXP( EXP2NEXT, EXP2BLK);
       LOADTEXP( EXP2NEXT);
       TC := CHARACTR[ _partyx];
       CLSIDX := Ord( TCLASS( TC.XCLASS)) * 13;

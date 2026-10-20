@@ -52,6 +52,8 @@ procedure SHOPS;
     WHOHELPX : SmallInt;
     DISABLED : string;
     WHO      : TCHAR;
+    WHOSKN   : TSPELLSKN;      { WHO's wired spell list and possessions }
+    WHOPOSS  : TPOSSBLK;
 
 
     procedure CANTSHOP;
@@ -204,6 +206,7 @@ procedure SHOPS;
 
 
   begin { CANT }
+    WIRECHAR( WHO, WHOSKN, WHOPOSS);
     XGOTO := XCASTLE;
     cantDone := false;
     repeat
@@ -808,6 +811,7 @@ procedure SHOPS;
   var
     POSSI   : SmallInt;
     CHARX   : SmallInt;
+    DISKX   : SmallInt;
     WONGAME : Boolean;
     TC      : ^TCHAR;
     TP      : ^TPOSSESS;
@@ -881,10 +885,18 @@ procedure SHOPS;
       end;
     CHARX := 0;
     POSSI := 0;
+    { AP copies TCHAR records down over the dropped members.  CHARACTR
+      holds pointers to the six fixed slots, so swap instead: dropped
+      members' slots end up past PARTYCNT and CHARACTR stays a permutation
+      of the slots (no two entries may share one). }
     while CHARX < PARTYCNT do
       begin
+        TC := CHARACTR[ POSSI];
         CHARACTR[ POSSI] := CHARACTR[ CHARX];
+        CHARACTR[ CHARX] := TC;
+        DISKX := CHARDISK[ POSSI];
         CHARDISK[ POSSI] := CHARDISK[ CHARX];
+        CHARDISK[ CHARX] := DISKX;
         if Byte( CHARACTR[ POSSI].STATUS) = 0 then  { OK = 0 }
           POSSI := POSSI + 1;
         CHARX := CHARX + 1

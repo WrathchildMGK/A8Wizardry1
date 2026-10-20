@@ -37,28 +37,32 @@ var
   INITTURN : Boolean;
   NEEDDRMZ : Boolean;
   MAZE     : TMAZE;
+  MZB_W, MZB_S, MZB_E, MZB_N : TMAZEMAP;    { maze backing (WIREMAZE); one set per }
+  MZB_FIGHTS : TFIGHTMAP;                   { segment, as only one floor is loaded }
+  MZB_SQX    : TSQRMAP;
+  MZB_EC     : TECBLK;
 
 
-{ Unit-level helpers: record.ptr^[i] is untyped in MP so we use Move() to copy
-  one byte to a typed local before returning. }
+{ Maze cell readers: MAZE is wired to the MZB_* arrays (WIREMAZE), so read
+  them directly rather than through MAZE.x^[i]. }
 
 function MZ_N( X, Y: SmallInt): Byte;
-var B: Byte; begin B := 0; Move( MAZE.N^[ X*20+Y], B, 1); MZ_N := B end;
+begin MZ_N := MZB_N[ X*20+Y] end;
 
 function MZ_S( X, Y: SmallInt): Byte;
-var B: Byte; begin B := 0; Move( MAZE.S^[ X*20+Y], B, 1); MZ_S := B end;
+begin MZ_S := MZB_S[ X*20+Y] end;
 
 function MZ_E( X, Y: SmallInt): Byte;
-var B: Byte; begin B := 0; Move( MAZE.E^[ X*20+Y], B, 1); MZ_E := B end;
+begin MZ_E := MZB_E[ X*20+Y] end;
 
 function MZ_W( X, Y: SmallInt): Byte;
-var B: Byte; begin B := 0; Move( MAZE.W^[ X*20+Y], B, 1); MZ_W := B end;
+begin MZ_W := MZB_W[ X*20+Y] end;
 
 function MZ_SQR( X, Y: SmallInt): Byte;
-var B: Byte; begin B := 0; Move( MAZE.SQREXTRA^[ X*20+Y], B, 1); MZ_SQR := B end;
+begin MZ_SQR := MZB_SQX[ X*20+Y] end;
 
 function MZ_FGT( X, Y: SmallInt): Byte;
-var B: Byte; begin B := 0; Move( MAZE.FIGHTS^[ X*20+Y], B, 1); MZ_FGT := B end;
+begin MZ_FGT := MZB_FIGHTS[ X*20+Y] end;
 
 
 procedure RUNNER;
@@ -837,6 +841,7 @@ procedure RUNNER;
   { ── RUNNER main body ─────────────────────────────────────────────────────── }
 
 begin  { RUNNER }
+  WIREMAZE( MAZE, MZB_W, MZB_S, MZB_E, MZB_N, MZB_FIGHTS, MZB_SQX, MZB_EC);
   QUICKPLT := false;
   READMAZE;
   CLROOMFG( MAZEX, MAZEY);

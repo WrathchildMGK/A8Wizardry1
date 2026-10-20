@@ -23,6 +23,12 @@ procedure COMBAT;
     PREBATOR : array[ 0..5] of SmallInt;
     DRAINED  : array[ 0..5] of Boolean;
     BATTLERC : array[ 0..4] of ^TENEMY2;
+    { Static backing for BATTLERC and everything it points at (no heap). }
+    BR2BLK   : array[ 0..5  * TENEMY2_SIZE      - 1] of Byte;
+    BR2ABLK  : array[ 0..5  * SizeOf( TENEMY2A) - 1] of Byte;
+    BRBBLK   : array[ 0..5  * SizeOf( TENEMY)   - 1] of Byte;
+    T04BLK   : array[ 0..45 * SizeOf( TTEMP04)  - 1] of Byte;
+    RECSBLK  : array[ 0..40 * SizeOf( THPREC)   - 1] of Byte;
 
 
   function BSET_CB( B: Byte): Boolean;
@@ -2772,32 +2778,25 @@ procedure COMBAT;
     BRC : ^TENEMY2;
     BRA : ^TENEMY2A;
     BRB : ^TENEMY;
-    PT  : ^TTEMP04;     { BRA.TEMP04[]^ / BRB.RECS[]^ only via a pointer (mpbugs/bug10) }
-    PH  : ^THPREC;
   begin
+    { Wire BATTLERC[0..4] -> TENEMY2 -> A (TENEMY2A, TEMP04[0..8]) and
+      B (TENEMY, RECS[0..7]) to the static blocks above, then clear. }
+    FillChar( BR2ABLK, SizeOf( BR2ABLK), 0);
+    FillChar( BRBBLK,  SizeOf( BRBBLK),  0);
+    FillChar( T04BLK,  SizeOf( T04BLK),  0);
+    FillChar( RECSBLK, SizeOf( RECSBLK), 0);
     for I := 0 to 4 do
       begin
-        GetMem( BATTLERC[ I]);
-        BRC := BATTLERC[ I];
-        FillChar( BRC^, SizeOf( TENEMY2), 0);
-        GetMem( BRC.A);
-        GetMem( BRC.B);
-        BRA := BRC.A;
-        BRB := BRC.B;
-        FillChar( BRA^, SizeOf( TENEMY2A), 0);
-        FillChar( BRB^, SizeOf( TENEMY),   0);
+        BATTLERC[ I] := Pointer( Word( @BR2BLK) + I * TENEMY2_SIZE);
+        BRC   := BATTLERC[ I];
+        BRA   := Pointer( Word( @BR2ABLK) + I * SizeOf( TENEMY2A));
+        BRB   := Pointer( Word( @BRBBLK)  + I * SizeOf( TENEMY));
+        BRC.A := BRA;              { not ":= Pointer(...)": rejected for a ^record field }
+        BRC.B := BRB;
         for J := 0 to 8 do
-          begin
-            GetMem( BRA.TEMP04[ J]);
-            PT := BRA.TEMP04[ J];
-            FillChar( PT^, SizeOf( TTEMP04), 0)
-          end;
-        for J := 1 to 7 do
-          begin
-            GetMem( BRB.RECS[ J]);
-            PH := BRB.RECS[ J];
-            FillChar( PH^, SizeOf( THPREC), 0)
-          end
+          BRA.TEMP04[ J] := Pointer( Word( @T04BLK) + ( I * 9 + J) * SizeOf( TTEMP04));
+        for J := 0 to 7 do
+          BRB.RECS[ J] := Pointer( Word( @RECSBLK) + ( I * 8 + J) * SizeOf( THPREC))
       end
   end;
 

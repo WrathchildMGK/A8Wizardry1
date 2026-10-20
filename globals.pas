@@ -51,6 +51,10 @@ var
   { Static backing stores for pointer arrays; wired up at program start in wiz.pas. }
   CHAR_SLOT0, CHAR_SLOT1, CHAR_SLOT2,
   CHAR_SLOT3, CHAR_SLOT4, CHAR_SLOT5 : TCHAR;
+  CHAR_SKN0,  CHAR_SKN1,  CHAR_SKN2,
+  CHAR_SKN3,  CHAR_SKN4,  CHAR_SKN5  : TSPELLSKN;   { slot spell lists }
+  CHAR_POSS0, CHAR_POSS1, CHAR_POSS2,
+  CHAR_POSS3, CHAR_POSS4, CHAR_POSS5 : TPOSSBLK;    { slot possessions }
   SPELBLK_DATA                        : TSPELBLK;
 
 implementation

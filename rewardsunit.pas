@@ -165,6 +165,7 @@ procedure REWARDS;
     INDX     : SmallInt;
     GOLD2ONE : TWIZLONG;
     REWARDZ  : TREWARD;
+    RWBLK    : array[ 0..10 * SizeOf( TREWARDX) - 1] of Byte;  { REWARDXX[0..9] backing }
     PRWZ     : ^TREWARD;    { REWARDZ.REWARDXX[] only via a pointer (mpbugs/bug10) }
     RXZ      : ^TREWARDX;
 
@@ -197,7 +198,7 @@ procedure REWARDS;
 
       for I := 1 to 9 do
         begin
-          GetMem( PRW.REWARDXX[I]);
+          PRW.REWARDXX[I] := Pointer( Word( @RWBLK) + I * SizeOf( TREWARDX));
           RX := PRW.REWARDXX[I];
           J  := B + 6 + (I - 1) * 18;
           Move( IOCACHE[J],     RX.REWDPERC,    2);
@@ -886,6 +887,7 @@ procedure REWARDS;
     procedure CHKDRAIN;
     var
       EXPTABLE : TEXP;
+      EXPBLK   : TEXPBLK;     { EXPTABLE's wired entries }
       PEXP     : ^TWIZLONG;   { EXPTABLE[]^ only via a pointer (mpbugs/bug10) }
       TC_CK    : PTCHAR;
 
@@ -923,6 +925,7 @@ procedure REWARDS;
       end;
 
     begin  { CHKDRAIN }
+      WIREEXP( EXPTABLE, EXPBLK);
       LOADTEXP( EXPTABLE);
       KILLEXP.XHIGH := 0;
       KILLEXP.XMID  := 0;

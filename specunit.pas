@@ -43,6 +43,10 @@ end;
 procedure SPECIALS;
 var
   SPCINDEX : SmallInt;
+  MZB_W, MZB_S, MZB_E, MZB_N : TMAZEMAP;    { maze backing (WIREMAZE); one set per }
+  MZB_FIGHTS : TFIGHTMAP;                   { segment, as only one floor is loaded }
+  MZB_SQX    : TSQRMAP;
+  MZB_EC     : TECBLK;
 
 
   { ────────────────────────────────────────────────────────────────────────── }
@@ -54,6 +58,8 @@ var
     PICKLIST : array[ 0..6] of SmallInt;   { AP: 1..6, extended to 0..6 }
     PICKCHAR : SmallInt;
     PICKREC  : TCHAR;
+    PRSKN    : TSPELLSKN;      { PICKREC's wired spell list and possessions }
+    PRPOSS   : TPOSSBLK;
     MAZE     : TMAZE;
     INMYROOM : array[ 0..19, 0..19] of Boolean;
     CHECKED  : array[ 0..19, 0..19] of Boolean;
@@ -76,8 +82,7 @@ var
       Write( Chr( 12)); WriteLn( 'FOUND:'); WriteLn( ''); WriteLn( ''); WriteLn( '');
       for PICKCHAR := 0 to SCNTOC.RECPERDK[ ZCHAR] - 1 do
         begin
-          FillChar( PICKREC, SizeOf( TCHAR), 0);
-          LOADTCHAR( PICKCHAR, PICKREC);
+          LOADTCHAR( PICKCHAR, PICKREC);      { clears, keeps wiring }
           if not PICKREC.INMAZE then
             if PICKREC.LOSTXYL[ 3] = MAZELEV then      { AP: LOSTXYL.LOCATION[3] }
               if INMYROOM[ PICKREC.LOSTXYL[ 1], PICKREC.LOSTXYL[ 2]] then
@@ -107,7 +112,7 @@ var
       until (PICKCHAR > 0) and (PICKCHAR <= PICKCNT);
       if PICKLIST[ PICKCHAR] = -1 then exit;
       TC := CHARACTR[ PARTYCNT];
-      FillChar( TC^, SizeOf( TCHAR), 0);
+      CLEARCHAR( TC^);
       LOADTCHAR( PICKLIST[ PICKCHAR], TC^);
       CHARDISK[ PARTYCNT]             := PICKLIST[ PICKCHAR];
       CHARACTR[ PARTYCNT].LOSTXYL[1] := 0;
@@ -147,10 +152,10 @@ var
           for VERT := 0 to 19 do
             if INMYROOM[ HORZ][ VERT] and not CHECKED[ HORZ][ VERT] then
               begin
-                CHECKLOC( HORZ+1, VERT,   MAZE.E^[ HORZ*20+VERT]);
-                CHECKLOC( HORZ-1, VERT,   MAZE.W^[ HORZ*20+VERT]);
-                CHECKLOC( HORZ,   VERT-1, MAZE.S^[ HORZ*20+VERT]);
-                CHECKLOC( HORZ,   VERT+1, MAZE.N^[ HORZ*20+VERT]);
+                CHECKLOC( HORZ+1, VERT,   MZB_E[ HORZ*20+VERT]);
+                CHECKLOC( HORZ-1, VERT,   MZB_W[ HORZ*20+VERT]);
+                CHECKLOC( HORZ,   VERT-1, MZB_S[ HORZ*20+VERT]);
+                CHECKLOC( HORZ,   VERT+1, MZB_N[ HORZ*20+VERT]);
                 CHECKED[ HORZ][ VERT] := true
               end
       until DONELOOK
@@ -158,6 +163,8 @@ var
 
 
   begin  { INSPECT }
+    WIRECHAR( PICKREC, PRSKN, PRPOSS);
+    WIREMAZE( MAZE, MZB_W, MZB_S, MZB_E, MZB_N, MZB_FIGHTS, MZB_SQX, MZB_EC);
     Write( Chr( 12)); Write( 'LOOKING');
     TEXTMODE; EXPLROOM; LOOKLOST;
     repeat
@@ -608,6 +615,7 @@ var
 
 
   begin  { SPCMISC }
+    WIREMAZE( MAZEFLOR, MZB_W, MZB_S, MZB_E, MZB_N, MZB_FIGHTS, MZB_SQX, MZB_EC);
     LOADTMAZE( MAZELEV - 1, MAZEFLOR);
     BOUNCEFL := SPCINDEX;
     if BOUNCEFL = 0 then
