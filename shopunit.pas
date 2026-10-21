@@ -1,11 +1,11 @@
 unit SHOPUNIT;
 
 { Wizardry I — SHOPS segment.
-  Source: apple/wiz1c/SHOPS + SHOPS2.
+  Source: apple/Wizardry_v3-2/Wiz1B.DSK/SHOPS + Wiz1A.DSK/SHOPS2 (v3.2).
   Key changes from Apple Pascal:
     - MP proc nesting tested to >=7 levels; original structure preserved.
-    - EXIT(CANTSHOP) from DSP2STR/GETPAYER -> shopDone flag in CANTSHOP.
-    - EXIT(CANT) from WELCOME (empty input) -> cantDone flag in CANT.
+    - EXIT(CANTSHOP) from DSP2STR/GETPAYER, EXIT(CANT) from WELCOME ->
+      unwind codes U_CANTSHOP / U_CANT (CONSTS).
     - EXIT(DOPLAYER), EXIT(SELLIDUN), EXIT(PURCHASE) from own body -> exit.
     - EXIT(SHOPS) from level-2 procs -> exit (SHOPS has no code after case).
     - AASTRAA (inline EXIT(PURCHASE)/EXIT(TRANSACT)) -> CENTSTR + exit.
@@ -26,11 +26,15 @@ unit SHOPUNIT;
 
 interface
 
-uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+uses TYPES, CONSTS, GLOBALS, UTIL, SCREEN;
 
 procedure SHOPS;
 
 implementation
+
+const
+  U_CANT     = $02;       { unwind targets: AP P010202, P010203 }
+  U_CANTSHOP = $03;
 
 { ── Var-param helpers for TCHAR fields (MP auto-deref type bugs) ─────────── }
 
@@ -46,7 +50,6 @@ procedure SHOPS;
 
   procedure CANT;
   var
-    cantDone : Boolean;
     WHOHELP  : SmallInt;
     WHOPAY   : SmallInt;
     WHOHELPX : SmallInt;
@@ -56,21 +59,21 @@ procedure SHOPS;
     WHOPOSS  : TPOSSBLK;
 
 
-    procedure CANTSHOP;
+    function CANTSHOP: Byte;
     var
-      shopDone : Boolean;
+      U : Byte;
 
 
-      procedure DSP2STR( STR1: string; STR2: string);
+      function DSP2STR( STR1: string; STR2: string): Byte;
       begin
         CENTSTR( Concat( Concat( '** ', STR1), Concat( STR2, ' **')));
-        shopDone := true;
-        exit
+        DSP2STR := U_CANTSHOP                       { EXIT( CANTSHOP) }
       end;
 
 
-      procedure WELCOME;
+      function WELCOME: Byte;
       begin
+        WELCOME := UNWNONE;
         GotoXY( 0, 13);
         Write( Chr( 11));
         WriteLn( ' WELCOME TO THE TEMPLE OF RADIANT CANT!');
@@ -79,7 +82,7 @@ procedure SHOPS;
         GETLINE;
         DISABLED := GTSTRING;
         if DISABLED = '' then
-          begin cantDone := true; shopDone := true; exit end;
+          exit( U_CANT);                            { EXIT( CANT) }
         WHOHELPX := 0;
         LOADTCHAR( WHOHELPX, WHO);
         while (WHOHELPX < SCNTOC.RECPERDK[ ZCHAR]) and
@@ -89,30 +92,29 @@ procedure SHOPS;
             LOADTCHAR( WHOHELPX, WHO)
           end;
         if WHOHELPX = SCNTOC.RECPERDK[ ZCHAR] then
-          begin DSP2STR( '', 'WHO?'); exit end;
-        if shopDone then exit;
+          exit( DSP2STR( '', 'WHO?'));
         if ((WHO.LOSTXYL[ 1] + WHO.LOSTXYL[ 2] + WHO.LOSTXYL[ 3]) <> 0)
             or WHO.INMAZE then
-          begin DSP2STR( WHO.NAME, ' IS NOT HERE'); exit end;
-        if shopDone then exit;
+          exit( DSP2STR( WHO.NAME, ' IS NOT HERE'));
         if WHO.STATUS = LOST then
-          begin DSP2STR( WHO.NAME, ' IS LOST'); exit end;
-        if shopDone then exit;
+          exit( DSP2STR( WHO.NAME, ' IS LOST'));
         if WHO.STATUS = OK then
-          begin DSP2STR( WHO.NAME, ' IS OK'); exit end;
+          exit( DSP2STR( WHO.NAME, ' IS OK'));
         WHOHELP := WHOHELPX
       end;
 
 
-      procedure PAYCANT;
+      function PAYCANT: Byte;
       var
         PAYAMT : TWIZLONG;
+        U      : Byte;
 
 
-        procedure GETPAYER;
+        function GETPAYER: Byte;
         var
           TC : ^TCHAR;
         begin
+          GETPAYER := UNWNONE;
           PAYAMT.XHIGH := 0;
           PAYAMT.XMID  := 0;
           case Byte( WHO.STATUS) of
@@ -129,19 +131,18 @@ procedure SHOPS;
           WriteLn( '');
           WHOPAY := GETCHARX( false, 'WHO WILL TITHE');
           if WHOPAY = -1 then
-            begin shopDone := true; exit end;
+            exit( U_CANTSHOP);                      { EXIT( CANTSHOP) }
           TC := CHARACTR[ WHOPAY];
           if TESTLONG( PAYAMT, TC.GOLD) > 0 then
-            begin DSP2STR( '', 'CHEAP APOSTATES! OUT!'); exit end;
-          if shopDone then exit;
+            exit( DSP2STR( '', 'CHEAP APOSTATES! OUT!'));
           SUBLONGS( TC.GOLD, PAYAMT)
         end;
 
 
-        procedure DOCANT;
+        function DOCANT: Byte;
 
 
-          procedure ASHLOST;
+          function ASHLOST: Byte;
           begin
             if WHO.STATUS = DEAD then
               WHO.STATUS := ASHES
@@ -151,9 +152,9 @@ procedure SHOPS;
             SAVETCHAR( WHOHELP, WHO);
             WriteLn( '');
             if WHO.STATUS = LOST then
-              DSP2STR( WHO.NAME, ' WILL BE BURIED')
+              ASHLOST := DSP2STR( WHO.NAME, ' WILL BE BURIED')
             else
-              DSP2STR( WHO.NAME, ' NEEDS KADORTO NOW')
+              ASHLOST := DSP2STR( WHO.NAME, ' NEEDS KADORTO NOW')
           end;
 
 
@@ -171,14 +172,14 @@ procedure SHOPS;
           if WHO.STATUS = DEAD then
             begin
               if Random( 100) > (50 + 3 * WHO.ATTRIB[ VITALITY]) then
-                begin ASHLOST; exit end
+                exit( ASHLOST)
               else
                 WHO.HPLEFT := 1
             end
           else if WHO.STATUS = ASHES then
             begin
               if Random( 100) > (40 + 3 * WHO.ATTRIB[ VITALITY]) then
-                begin ASHLOST; exit end
+                exit( ASHLOST)
               else
                 WHO.HPLEFT := WHO.HPMAX
             end;
@@ -186,32 +187,30 @@ procedure SHOPS;
           WHO.STATUS := OK;
           SAVETCHAR( WHOHELP, WHO);
           WriteLn( '');
-          DSP2STR( WHO.NAME, ' IS WELL')
+          Result := DSP2STR( WHO.NAME, ' IS WELL')
         end;
 
 
       begin { PAYCANT }
-        GETPAYER;
-        if shopDone then exit;
-        DOCANT
+        U := GETPAYER;
+        if U <> UNWNONE then exit( U);
+        Result := DOCANT
       end;
 
 
     begin { CANTSHOP }
-      shopDone := false;
-      WELCOME;
-      if shopDone then exit;
-      PAYCANT
+      Result := UNWNONE;
+      U := WELCOME;
+      if U = UNWNONE then U := PAYCANT;
+      if U <> U_CANTSHOP then Result := U         { U_CANTSHOP ends here }
     end;
 
 
   begin { CANT }
     WIRECHAR( WHO, WHOSKN, WHOPOSS);
     XGOTO := XCASTLE;
-    cantDone := false;
     repeat
-      CANTSHOP;
-      if cantDone then exit
+      if CANTSHOP = U_CANT then exit
     until false
   end;
 
@@ -261,13 +260,13 @@ procedure SHOPS;
                 LOADOBJREC( INVENTX, XOBJECT)
               until (XOBJECT.BOLTACXX <> 0) and (not XOBJECT.CURSED);
               OBJLIST[ X] := INVENTX;
-              Write( X: 1);
+              Write( X);
               Write( ')');
-              Write( XOBJECT.NAME: 15);
+              begin SPACES( 15 - Length( XOBJECT.NAME)); Write( XOBJECT.NAME) end;
               Write( ' ');
               PRNTLONG( XOBJECT.PRICE);
               TC := CHARACTR[ CHARI];
-              if not XOBJECT.CLASSUSE[ TC.XCLASS] then
+              if not XOBJECT.CLASSUSE[ TC^.XCLASS] then
                 Write( ' UNUSABLE')
             end
         end;
@@ -290,13 +289,13 @@ procedure SHOPS;
                 LOADOBJREC( INVENTX, XOBJECT)
               until (XOBJECT.BOLTACXX <> 0) and (not XOBJECT.CURSED);
               OBJLIST[ X] := INVENTX;
-              Write( X: 1);
+              Write( X);
               Write( ')');
-              Write( XOBJECT.NAME: 15);
+              begin SPACES( 15 - Length( XOBJECT.NAME)); Write( XOBJECT.NAME) end;
               Write( ' ');
               PRNTLONG( XOBJECT.PRICE);
               TC := CHARACTR[ CHARI];
-              if not XOBJECT.CLASSUSE[ TC.XCLASS] then
+              if not XOBJECT.CLASSUSE[ TC^.XCLASS] then
                 Write( ' UNUSABLE')
             end
         end;
@@ -322,10 +321,10 @@ procedure SHOPS;
           if XOBJECT.BOLTACXX = 0 then
             begin CENTSTR( '** YOU BOUGHT THE LAST ONE **'); exit end;
           if TC.POSS.POSSCNT = 8 then
-            begin CENTSTR( '** YOU CANT CARRY ANYTHING MORE **'); exit end;
+            begin CENTSTR( '** YOU CANNOT CARRY ANYTHING MORE **'); exit end;
           if TESTLONG( TC.GOLD, XOBJECT.PRICE) < 0 then
             begin CENTSTR( '** YOU CANNOT AFFORD IT **'); exit end;
-          if not XOBJECT.CLASSUSE[ TC.XCLASS] then
+          if not XOBJECT.CLASSUSE[ TC^.XCLASS] then
             begin
               GotoXY( 0, 22);
               Write( Chr( 11));
@@ -379,9 +378,9 @@ procedure SHOPS;
           PRNTLONG( TCC.GOLD);
           WriteLn( ' GOLD');
           WriteLn( 'YOU MAY P)URCHASE, SCROLL');
-          Write( ' ': 8);
+          Write( '        ');
           WriteLn( 'F)ORWARD OR B)ACK, GO TO THE');
-          Write( ' ': 8);
+          Write( '        ');
           Write( 'S)TART, OR L)EAVE');
           GotoXY( 41, 0);
           repeat
@@ -418,12 +417,12 @@ procedure SHOPS;
               TP := TC.POSS.POSSESS[ TRANOBJX];
               OBJLIST[ TRANOBJX] := TP.EQINDEX;
               LOADOBJREC( OBJLIST[ TRANOBJX], XOBJECT);
-              Write( TRANOBJX: 1);
+              Write( TRANOBJX);
               Write( Chr( 41));
               if TP.IDENTIF then
-                Write( XOBJECT.NAME: 15)
+                begin SPACES( 15 - Length( XOBJECT.NAME)); Write( XOBJECT.NAME) end
               else
-                Write( XOBJECT.NAMEUNK: 15);
+                begin SPACES( 15 - Length( XOBJECT.NAMEUNK)); Write( XOBJECT.NAMEUNK) end;
               Write( ' ');
               DIVLONG( XOBJECT.PRICE, HALFPRIC);
               if ACTION = SELL then
@@ -459,7 +458,7 @@ procedure SHOPS;
                   XOBJECT.PRICE.XLOW  := 1
                 end;
               if TP.CURSED then
-                begin CENTSTR( '** WE DONT BUY CURSED ITEMS **'); exit end
+                begin CENTSTR( '** WE DO NOT BUY CURSED ITEMS **'); exit end
             end
           else
             begin
@@ -468,7 +467,7 @@ procedure SHOPS;
               if TP.IDENTIF and (ACTION = IDENTIFY) then
                 begin CENTSTR( '** THAT HAS BEEN IDENTIFIED **'); exit end;
               if TESTLONG( TC.GOLD, XOBJECT.PRICE) < 0 then
-                begin CENTSTR( '** YOU CANT AFFORD THE FEE **'); exit end
+                begin CENTSTR( '** YOU CANNOT AFFORD THE FEE **'); exit end
             end;
           if ACTION = SELL then
             ADDLONGS( TC.GOLD, XOBJECT.PRICE)
@@ -479,7 +478,7 @@ procedure SHOPS;
           else
             begin
               if TRANOBJX < TC.POSS.POSSCNT then
-                for POSSX := (TRANOBJX + 1) to TC.POSS.POSSCNT do
+                for POSSX := (TRANOBJX + 1) to TC^.POSS.POSSCNT do
                   begin
                     TP  := TC.POSS.POSSESS[ POSSX - 1];
                     TP2 := TC.POSS.POSSESS[ POSSX];
@@ -541,13 +540,14 @@ procedure SHOPS;
         PRNTLONG( TC.GOLD);
         WriteLn( ' GOLD');
         WriteLn( '');
-        WriteLn( 'YOU MAY B)UY  AN ITEM,');
+        WriteLn( 'YOU MAY POOL G)OLD, B)UY  AN ITEM,');   { v3.2 WC040 }
         WriteLn( '        S)ELL AN ITEM, HAVE AN ITEM');
         WriteLn( '        U)NCURSED,  OR HAVE AN ITEM');
         WriteLn( '        I)DENTIFIED, OR L)EAVE');
         GotoXY( 41, 0);
         GETKEY;
         case INCHAR of
+          'G': POOLALLG( CHARI);               { v3.2 WC040 }
           'U': SELLIDUN( UNCURSE);
           'I': SELLIDUN( IDENTIFY);
           'S': SELLIDUN( SELL);
@@ -627,7 +627,7 @@ procedure SHOPS;
         TP    : ^TPOSSESS;
       begin
         TC := CHARACTR[ LLBASE04];
-        for POSSX := 1 to TC.POSS.POSSCNT do
+        for POSSX := 1 to TC^.POSS.POSSCNT do
           begin
             TP := TC.POSS.POSSESS[ POSSX];
             if not TP.CURSED then
@@ -635,7 +635,7 @@ procedure SHOPS;
                 TP.EQINDEX := 0
           end;
         X := 0;
-        for POSSX := 1 to TC.POSS.POSSCNT do
+        for POSSX := 1 to TC^.POSS.POSSCNT do
           begin
             TP := TC.POSS.POSSESS[ POSSX];
             if TP.EQINDEX <> 0 then
@@ -656,9 +656,9 @@ procedure SHOPS;
       for LLBASE04 := 0 to PARTYCNT - 1 do
         begin
           TC := CHARACTR[ LLBASE04];
-          if TC.STATUS <> LOST then
+          if TC^.STATUS <> LOST then
             begin
-              if TC.STATUS < DEAD then
+              if TC^.STATUS < DEAD then
                 TC.STATUS := DEAD;
               TC.INMAZE := false;
               DIVLONG( TC.GOLD, TWO);
@@ -737,8 +737,9 @@ procedure SHOPS;
     begin
       GotoXY( 0, 13);
       WriteLn( Chr( 11));
-      WriteLn( 'ENTERING': 24);
-      WriteLn( SCNTOC.GAMENAME: 20 + Length( SCNTOC.GAMENAME) div 2);
+      WriteLn( '                ENTERING');
+      SPACES( 20 - Length( SCNTOC.GAMENAME) + Length( SCNTOC.GAMENAME) div 2);
+      WriteLn( SCNTOC.GAMENAME);
       GotoXY( 41, 0);
       XGOTO    := XNEWMAZE;
       MAZEX    :=  0;
@@ -835,7 +836,7 @@ procedure SHOPS;
           TC.LOSTXYL[ 4] := TC.LOSTXYL[ 4] or 1   { set Honor Guard award bit }
         end;
       Write( Chr( 12));
-      WriteLn( '*** CONGRATULATIONS ***': 32);
+      WriteLn( '         *** CONGRATULATIONS ***');
       TEXTMODE;
       WriteLn( '');
       WriteLn( 'YOU HAVE COMPLETED YOUR QUEST AND THE');
@@ -867,7 +868,7 @@ procedure SHOPS;
     for CHARX := 0 to PARTYCNT - 1 do
       begin
         TC := CHARACTR[ CHARX];
-        for POSSI := 1 to TC.POSS.POSSCNT do
+        for POSSI := 1 to TC^.POSS.POSSCNT do
           begin
             TP := TC.POSS.POSSESS[ POSSI];
             if TP.EQINDEX = 94 then WONGAME := true
@@ -880,7 +881,7 @@ procedure SHOPS;
     for CHARX := 0 to PARTYCNT - 1 do
       begin
         TC := CHARACTR[ CHARX];
-        TC.INMAZE := TC.STATUS = OK;
+        TC.INMAZE := TC^.STATUS = OK;
         SAVETCHAR( CHARDISK[ CHARX], TC^)
       end;
     CHARX := 0;

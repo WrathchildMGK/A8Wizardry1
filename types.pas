@@ -27,12 +27,42 @@ type
 
   { --- Enumerations --- }
 
-  TXGOTO = (XDONE,    XTRAININ, XCASTLE,  XGILGAMS, XINSPECT, XBOLTAC,
-            XCANT,    XRUNNER,  XCOMBAT,  XNEWMAZE, XCHK4WIN, XREWARD,
-            XINSPCT2, XEQUIP6,  XEQPDSP,  XREORDER, XCEMETRY, XINSPCT3,
-            XBCK2CMP, XBCK2ROL, XCMP2EQ6, XUNUSED,  XREWARD2, XSCNMSG,
-            XCAMPSTF, XEDGTOWN, XINSAREA, XBK2CMP2);
+  { TXGOTO is a Byte with named values, not an enum: MP 1.7.9 ignores
+    "absolute" on enum-typed variables, and XGOTO / XGOTO2 must sit at
+    fixed addresses shared by the residents and the overlays. }
+  TXGOTO = Byte;
 
+const
+  XDONE    = 0;
+  XTRAININ = 1;
+  XCASTLE  = 2;
+  XGILGAMS = 3;
+  XINSPECT = 4;
+  XBOLTAC  = 5;
+  XCANT    = 6;
+  XRUNNER  = 7;
+  XCOMBAT  = 8;
+  XNEWMAZE = 9;
+  XCHK4WIN = 10;
+  XREWARD  = 11;
+  XINSPCT2 = 12;
+  XEQUIP6  = 13;
+  XEQPDSP  = 14;
+  XREORDER = 15;
+  XCEMETRY = 16;
+  XINSPCT3 = 17;
+  XBCK2CMP = 18;
+  XBCK2ROL = 19;
+  XCMP2EQ6 = 20;
+  XUNUSED  = 21;
+  XREWARD2 = 22;
+  XSCNMSG  = 23;
+  XCAMPSTF = 24;
+  XEDGTOWN = 25;
+  XINSAREA = 26;
+  XBK2CMP2 = 27;
+
+type
   TRACE    = (NORACE, HUMAN, ELF, DWARF, GNOME, HOBBIT);
   TCLASS   = (FIGHTER, MAGE, PRIEST, THIEF, BISHOP, SAMURAI, LORD, NINJA);
   TALIGN   = (UNALIGN, GOOD, NEUTRAL, EVIL);
@@ -227,12 +257,19 @@ type
   end;                              { 1+2+2+2+18 = 25 bytes }
 
   TENEMY2 = record
-    A : ^TENEMY2A;                  { AP: inline sub-record (134 bytes) }
-    B : ^TENEMY;                    { AP: inline TENEMY (156 bytes) }
+    A : Pointer;                    { ^TENEMY2A; AP: inline sub-record (134 bytes) }
+    B : Pointer;                    { ^TENEMY; AP: inline TENEMY (156 bytes).  Untyped:
+                                      MP counts a ^record field as 0 bytes, so
+                                      P^.B used offset 0 (mpbugs/bug16) }
   end;                              { 4 bytes }
 
 const
   TENEMY2_SIZE = 4;                 { SizeOf( TENEMY2) wrongly gives 0 (mpbugs/bug11) }
+  TSCNTOC_SIZE = 107;               { SizeOf( TSCNTOC) gives 105, same bug }
+
+  { Converted scenario file header (block 0, tools/mkscen.py). }
+  SCNHDROFS    = 448;
+  SCNVERSION   = 1;
 
 type
 

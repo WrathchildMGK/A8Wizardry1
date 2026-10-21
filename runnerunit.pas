@@ -1,9 +1,11 @@
 unit RUNNERUNIT;
 
 { Wizardry I — RUNNER segment (maze movement and 3-D rendering).
-  Source: apple/wiz1c/RUNNER + apple/wiz1c/RUNNER2.
+  Source: apple/Wizardry_v3-2/Wiz1C.DSK/RUNNER + RUNNER2 (v3.2).
   Key changes from Apple Pascal:
-    - EXIT(RUNNER) from nested procs → _done := true; exit chain
+    - EXIT(RUNNER) from nested routines → unwind code U_RUNNER (CONSTS)
+    - CLROOMFG's recursive flood fill → explicit stack (MP locals are
+      static, and a deep fill would overflow the 6502 stack)
     - EXIT(PROCNAME) within PROCNAME → plain exit
     - MAZE.N[X][Y] → MAZE.N^[X*20+Y]  (flat 1-D TMAZEMAP pointer)
     - MAZE.SQREXTRA[X][Y] → MAZE.SQREXTRA^[X*20+Y]
@@ -14,12 +16,12 @@ unit RUNNERUNIT;
     - CLASS field → XCLASS  (CLASS is reserved in MP)
     - LOSTXYL.POISNAMT[1] → LOSTXYL[1]  (flat variant array)
     - CHARREC sort swaps ^TCHAR pointers, not full record copies
-    - DRAWLINE/CLRPICT: stubs (Apple II hi-res; Atari impl TODO)
+    - DRAWLINE/CLRPICT: HIUTIL, Apple picture coordinates scaled to mode E
     - CHENCOUN maze write-back: stub (TODO: SAVETMAZE when I/O is wired) }
 
 interface
 
-uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+uses TYPES, CONSTS, GLOBALS, UTIL, SCREEN;
 
 procedure RUNNER;
 
@@ -31,8 +33,9 @@ const
   SOUTH = 2;
   WEST  = 3;
 
+  U_RUNNER = $01;       { unwind target: AP P010E01 }
+
 var
-  _done    : Boolean;   { set true to simulate EXIT(RUNNER) from a nested proc }
   QUICKPLT : Boolean;
   INITTURN : Boolean;
   NEEDDRMZ : Boolean;
@@ -288,7 +291,7 @@ procedure RUNNER;
 
   { ── PRSTATS ──────────────────────────────────────────────────────────────── }
 
-  procedure PRSTATS;
+  function PRSTATS: Byte;
   var
     SAVE1    : SmallInt;
     TEMPX    : SmallInt;
@@ -299,7 +302,7 @@ procedure RUNNER;
 
     procedure PRSTATUS;
     begin
-      if Byte( CHARREC.STATUS) = Byte( OK) then
+      if Byte( CHARREC^.STATUS) = Byte( OK) then
         begin
           ANYALIVE := true;
           if CHARREC.LOSTXYL[ 1] = 0 then
@@ -308,11 +311,12 @@ procedure RUNNER;
             PRINTSTR( 'POISON')
         end
       else
-        PRINTSTR( SCNTOC_STATUS[ Byte( CHARREC.STATUS)])
+        PRINTSTR( STATNAME( Byte( CHARREC^.STATUS)))
     end;
 
 
   begin  { PRSTATS }
+    Result := UNWNONE;
     for CHARX := 0 to PARTYCNT - 2 do
       for TEMPX := CHARX + 1 to PARTYCNT - 1 do
         if Byte( CHARACTR[ CHARX].STATUS) >
@@ -335,9 +339,9 @@ procedure RUNNER;
         PRINTSTR( ' ');
         PRINTSTR( CHARREC.NAME);
         MVCURSOR( 19, 17 + CHARX);
-        PRINTSTR( Copy( SCNTOC_ALIGN[ Byte( CHARREC.ALIGN)], 1, 1));
+        PRINTSTR( LEFTSTR( ALIGNNAME( Byte( CHARREC^.ALIGN)), 1));
         PRINTCHR( '-');
-        PRINTSTR( Copy( SCNTOC_CLASS[ Byte( CHARREC.XCLASS)], 1, 3));
+        PRINTSTR( LEFTSTR( CLASSNAME( Byte( CHARREC^.XCLASS)), 3));
         LLBASE04 := CHARREC.ARMORCL - ACMOD2;
         if LLBASE04 >= 0 then
           PRINTNUM( LLBASE04, 3)
@@ -349,7 +353,7 @@ procedure RUNNER;
             end
           else
             PRINTSTR( ' LO');
-        if Byte( CHARREC.STATUS) >= Byte( DEAD) then
+        if Byte( CHARREC^.STATUS) >= Byte( DEAD) then
           CHARREC.HPLEFT := 0;
         PRINTNUM( CHARREC.HPLEFT, 5);
         TEMPX := CHARREC.HEALPTS - CHARREC.LOSTXYL[ 1];
@@ -364,14 +368,14 @@ procedure RUNNER;
     if not ANYALIVE then
       begin
         XGOTO  := XCEMETRY;
-        _done  := true; exit
+        Result := U_RUNNER                              { EXIT( RUNNER) }
       end
   end;  { PRSTATS }
 
 
   { ── ENCOUNTR ─────────────────────────────────────────────────────────────── }
 
-  procedure ENCOUNTR;
+  function ENCOUNTR: Byte;
   var
     PMAZE    : ^TMAZE;    { MAZE.ENMYCALC[] only via a pointer (mpbugs/bug10) }
     ENCTYPE  : SmallInt;
@@ -404,25 +408,25 @@ procedure RUNNER;
         ATTK012 := 0;
     ENEMYINX := ENEMYI;
     XGOTO    := XCOMBAT;
-    _done    := true; exit
+    ENCOUNTR := U_RUNNER                                { EXIT( RUNNER) }
   end;  { ENCOUNTR }
 
 
   { ── RUNMAIN ──────────────────────────────────────────────────────────────── }
 
-  procedure RUNMAIN;
+  function RUNMAIN: Byte;
 
 
-    procedure EXITRUN( MAZELVL: SmallInt);
+    function EXITRUN( MAZELVL: SmallInt): Byte;
     begin
       MAZELEV := MAZELVL;
       CLEARPIC;
-      XGOTO  := XNEWMAZE;
-      _done  := true; exit
+      XGOTO   := XNEWMAZE;
+      EXITRUN := U_RUNNER                               { EXIT( RUNNER) }
     end;
 
 
-    procedure SPECSQAR;
+    function SPECSQAR: Byte;
     var
       SQTYPE : SmallInt;
 
@@ -434,24 +438,31 @@ procedure RUNNER;
       end;
 
 
-      procedure QUIETXFR;
+      function QUIETXFR: Byte;
       begin
+        QUIETXFR := UNWNONE;
         MAZEX := MAZE.AUX2[ SQTYPE];
         MAZEY := MAZE.AUX1[ SQTYPE];
         if MAZELEV <> MAZE.AUX0[ SQTYPE] then
-          begin EXITRUN( MAZE.AUX0[ SQTYPE]); if _done then exit end
+          QUIETXFR := EXITRUN( MAZE.AUX0[ SQTYPE])
       end;
 
 
-      procedure ACHUTE;
+      function ACHUTE: Byte;
       begin
         PRINTSTR( 'A CHUTE!');
-        QUIETXFR
+        MVCURSOR( 1, 13);                               { v3.2 WC050 }
+        PRINTSTR( 'PRESS A KEY TO SCRAMBLE');
+        MVCURSOR( 1, 14);
+        PRINTSTR( 'BACK TO YOUR FEET!');
+        GETKEY;
+        ACHUTE := QUIETXFR
       end;
 
 
-      procedure STAIRSYN;
+      function STAIRSYN: Byte;
       begin
+        STAIRSYN := UNWNONE;
         PRINTSTR( 'STAIRS GOING ');
         if MAZELEV > MAZE.AUX0[ SQTYPE] then
           PRINTSTR( 'UP.')
@@ -461,7 +472,7 @@ procedure RUNNER;
         PRINTSTR( 'TAKE THEM (Y/N) ?');
         repeat GETKEY until (INCHAR = 'Y') or (INCHAR = 'N');
         if INCHAR = 'Y' then
-          begin QUIETXFR; if _done then exit end
+          STAIRSYN := QUIETXFR
       end;
 
 
@@ -473,7 +484,7 @@ procedure RUNNER;
       end;
 
 
-      procedure ROCKWATR;
+      function ROCKWATR: Byte;
       var
         HPDAM   : SmallInt;
         HPTIMES : SmallInt;
@@ -485,7 +496,7 @@ procedure RUNNER;
         for PARTYI := 0 to PARTYCNT - 1 do
           begin
             PREC := CHARACTR[ PARTYI];
-            if Byte( PREC.STATUS) < Byte( DEAD) then
+            if Byte( PREC^.STATUS) < Byte( DEAD) then
               if (Random( 25) + MAZELEV) > PREC.ATTRIB[ AGILITY] then
                 begin
                   HPDAM := MAZE.AUX0[ SQTYPE];
@@ -504,38 +515,36 @@ procedure RUNNER;
                     end
                 end
           end;
-        PRSTATS; if _done then exit
+        ROCKWATR := PRSTATS
       end;
 
 
-      procedure APIT;
+      function APIT: Byte;
       begin
         PRINTSTR( 'A PIT!');
-        ROCKWATR; if _done then exit
+        APIT := ROCKWATR
       end;
 
 
-      procedure OUCH;
+      function OUCH: Byte;
       begin
         PRINTSTR( 'OUCH!');
-        ROCKWATR; if _done then exit
+        OUCH := ROCKWATR
       end;
 
 
-      procedure DOSCNMSG;
+      function DOSCNMSG: Byte;
       begin
         LLBASE04 := SQTYPE;
         XGOTO    := XSCNMSG;
         XGOTO2   := XRUNNER;
-        _done    := true; exit
+        DOSCNMSG := U_RUNNER                            { EXIT( RUNNER) }
       end;
 
 
-      procedure CHENCOUN;
-      var
-        UNUSEDXX : SmallInt;
-        UNUSEDYY : SmallInt;
+      function CHENCOUN: Byte;
       begin
+        CHENCOUN := UNWNONE;
         if MAZE.AUX0[ SQTYPE] = 0 then exit;
         if not FIGHTMAP[ MAZEX][ MAZEY] then exit;
         MVCURSOR( 14, 12);
@@ -553,17 +562,16 @@ procedure RUNNER;
               MAZE.SQRETYPE[ SQTYPE] := Byte( NORMAL);
             SAVETMAZE( MAZELEV - 1, MAZE);
           end;
-        _done := true; exit
+        CHENCOUN := U_RUNNER                            { EXIT( RUNNER) }
       end;
 
 
-      procedure BUTTONS;
+      function BUTTONS: Byte;
       var
         MAXBUT   : SmallInt;
         MINBUT   : SmallInt;
-        UNUSEDXX : SmallInt;
-        UNUSEDYY : SmallInt;
       begin
+        BUTTONS := UNWNONE;
         MINBUT := MAZE.AUX2[ SQTYPE];
         MAXBUT := MAZE.AUX1[ SQTYPE];
         PRINTSTR( 'THERE ARE BUTTONS ON THE WALL');
@@ -585,11 +593,12 @@ procedure RUNNER;
             MAZEX := Random( 20);
             MAZEY := Random( 20)
           end;
-        EXITRUN( MINBUT + Ord( INCHAR) - Ord( 'A'))
+        BUTTONS := EXITRUN( MINBUT + Ord( INCHAR) - Ord( 'A'))
       end;
 
 
     begin  { SPECSQAR }
+      Result := UNWNONE;
       CLRRECT( 1, 11, 38, 4);
       MVCURSOR( 1, 11);
       SQTYPE   := MZ_SQR( MAZEX, MAZEY);
@@ -600,28 +609,30 @@ procedure RUNNER;
         Byte( ROCKWATE): begin
                            MAZELEV := -99;
                            XGOTO   := XNEWMAZE;
-                           _done   := true; exit
+                           Result  := U_RUNNER          { EXIT( RUNNER) }
                          end;
-        Byte( BUTTONZ):  BUTTONS;
-        Byte( STAIRS):   if INITTURN then STAIRSYN;
-        Byte( PIT):      if INITTURN then APIT;
-        Byte( OUCHY):    OUCH;
-        Byte( CHUTE):    ACHUTE;
+        Byte( BUTTONZ):  Result := BUTTONS;
+        Byte( STAIRS):   if INITTURN then Result := STAIRSYN;
+        Byte( PIT):      if INITTURN then Result := APIT;
+        Byte( OUCHY):    Result := OUCH;
+        Byte( CHUTE):    Result := ACHUTE;
         Byte( SPINNER):  if INITTURN then SPINDIR;
-        Byte( TRANSFER): QUIETXFR;
+        Byte( TRANSFER): Result := QUIETXFR;
         Byte( DARK):     VERYDARK;
-        Byte( SCNMSG):   DOSCNMSG;
-        Byte( ENCOUNTE): CHENCOUN;
-      end;
-      if _done then exit
+        Byte( SCNMSG):   Result := DOSCNMSG;
+        Byte( ENCOUNTE): Result := CHENCOUN;
+      end
     end;  { SPECSQAR }
 
 
-    procedure UPDATEHP;
+    function UPDATEHP: Byte;
     var
-      CHARX   : SmallInt;
-      CHREC   : ^TCHAR;
+      CHARX    : SmallInt;
+      CHREC    : ^TCHAR;
+      SHOWPOIS : SmallInt;
     begin
+      UPDATEHP := UNWNONE;
+      SHOWPOIS := 0;
       for CHARX := 0 to PARTYCNT - 1 do
         begin
           CHREC := CHARACTR[ CHARX];
@@ -630,7 +641,7 @@ procedure RUNNER;
           if CHREC.HPLEFT <= 0 then
             begin
               CHREC.LOSTXYL[ 1] := 0;
-              if Byte( CHREC.STATUS) < Byte( DEAD) then
+              if Byte( CHREC^.STATUS) < Byte( DEAD) then
                 begin
                   MVCURSOR( 1, 11);
                   PRINTSTR( CHREC.NAME);
@@ -639,13 +650,18 @@ procedure RUNNER;
                   CLRRECT( 1, 11, 38, 1);
                   CHREC.HPLEFT := 0;
                   CHREC.STATUS := DEAD;
-                  PRSTATS; if _done then exit
+                  if PRSTATS = U_RUNNER then exit( U_RUNNER)
                 end
             end
           else
             if CHREC.HPLEFT > CHREC.HPMAX then
-              CHREC.HPLEFT := CHREC.HPMAX
-        end  { for }
+              CHREC.HPLEFT := CHREC.HPMAX;
+          if CHREC.LOSTXYL[ 1] > 0 then                 { v3.2 WC045 }
+            SHOWPOIS := 1
+        end;  { for }
+      if SHOWPOIS = 1 then
+        if not QUICKPLT then                            { v3.2 WC048 }
+          UPDATEHP := PRSTATS
     end;  { UPDATEHP }
 
 
@@ -751,7 +767,7 @@ procedure RUNNER;
     end;
 
 
-    procedure RUNINIT;
+    function RUNINIT: Byte;
     begin
       CLRRECT( 13, 1, 26, 4);
       CLRRECT( 13, 6, 26, 4);
@@ -761,15 +777,15 @@ procedure RUNNER;
       MVCURSOR( 13, 4); PRINTSTR( 'K)ICK     I)NSPECT');
       MVCURSOR( 13, 7); PRINTSTR( 'SPELLS :');
       GRAPHICS;
-      PRSTATS; if _done then exit;
-      NEEDDRMZ := true;
-      INITTURN := true
+      NEEDDRMZ := true;                                 { set first: PRSTATS }
+      INITTURN := true;                                 { may end RUNNER }
+      RUNINIT  := PRSTATS
     end;
 
 
   begin  { RUNMAIN }
-    RUNINIT;
-    if _done then exit;
+    Result := RUNINIT;
+    if Result <> UNWNONE then exit;
     repeat
       MVCURSOR( 22, 7);
       if LIGHT > 0 then
@@ -782,10 +798,12 @@ procedure RUNNER;
       else
         PRINTSTR( '       ');
       if NEEDDRMZ then DRAWMAZE;
+      if MAZE.SQRETYPE[ MZ_SQR( MAZEX, MAZEY)] = Byte( NORMAL) then
+        FIZZLES := 0;                                   { v3.2 WC051 }
       if MAZE.SQRETYPE[ MZ_SQR( MAZEX, MAZEY)] <> Byte( NORMAL) then
         if XGOTO2 <> XSCNMSG then
           if INITTURN then
-            begin SPECSQAR; if _done then exit end;
+            if SPECSQAR = U_RUNNER then exit( U_RUNNER);
       if XGOTO2 <> XSCNMSG then
         if INITTURN then
           CLRRECT( 1, 11, 38, 4);
@@ -795,9 +813,9 @@ procedure RUNNER;
          (INITTURN and (INCHAR = Chr( 75)) and
           (MZ_FGT( MAZEX, MAZEY) = 1) and (Random( 8) = 3))
       then
-        begin ENCOUNTR; if _done then exit end;
+        exit( ENCOUNTR);                                { only U_RUNNER }
       if INITTURN then
-        begin UPDATEHP; if _done then exit end;
+        if UPDATEHP = U_RUNNER then exit( U_RUNNER);
       INITTURN := false;
       GETKEY;
       case INCHAR of
@@ -805,18 +823,18 @@ procedure RUNNER;
         'A', 'L': DOTURN( 3);
         'D', 'R': DOTURN( 1);
         'K':      KICK;
-        'S':      begin PRSTATS; if _done then exit end;
+        'S':      if PRSTATS = U_RUNNER then exit( U_RUNNER);
         'T':      SETTIME;
         'Q':      QUIKPLOT;
         'C':      begin
                     XGOTO := XINSPCT2;
                     Write( Chr( 12));
-                    _done := true; exit
+                    exit( U_RUNNER)                     { EXIT( RUNNER) }
                   end;
         'I':      begin
                     XGOTO := XINSAREA;
                     Write( Chr( 12));
-                    _done := true; exit
+                    exit( U_RUNNER)                     { EXIT( RUNNER) }
                   end;
       end
     until false
@@ -826,15 +844,36 @@ procedure RUNNER;
   { ── CLROOMFG ─────────────────────────────────────────────────────────────── }
 
   procedure CLROOMFG( XLOOP, YLOOP: SmallInt);
+  { AP P010026, a recursive flood fill clearing FIGHTMAP over the room: the
+    same squares are cleared whatever the order, so a plain stack does. }
+  var
+    FX, FY : array[ 0..399] of Byte;
+    FSP    : SmallInt;
+
+    procedure CLRAT( X, Y: SmallInt);
+    begin
+      X := (X + 20) mod 20;
+      Y := (Y + 20) mod 20;
+      if not FIGHTMAP[ X][ Y] then exit;
+      FIGHTMAP[ X][ Y] := false;
+      FX[ FSP] := X;
+      FY[ FSP] := Y;
+      Inc( FSP)
+    end;
+
   begin
-    XLOOP := (XLOOP + 20) mod 20;
-    YLOOP := (YLOOP + 20) mod 20;
-    if not FIGHTMAP[ XLOOP][ YLOOP] then exit;
-    FIGHTMAP[ XLOOP][ YLOOP] := false;
-    if MZ_N( XLOOP, YLOOP) = Byte( OPEN) then CLROOMFG( XLOOP,   YLOOP + 1);
-    if MZ_E( XLOOP, YLOOP) = Byte( OPEN) then CLROOMFG( XLOOP+1, YLOOP);
-    if MZ_S( XLOOP, YLOOP) = Byte( OPEN) then CLROOMFG( XLOOP,   YLOOP - 1);
-    if MZ_W( XLOOP, YLOOP) = Byte( OPEN) then CLROOMFG( XLOOP-1, YLOOP)
+    FSP := 0;
+    CLRAT( XLOOP, YLOOP);
+    while FSP > 0 do
+      begin
+        Dec( FSP);
+        XLOOP := FX[ FSP];
+        YLOOP := FY[ FSP];
+        if MZ_N( XLOOP, YLOOP) = Byte( OPEN) then CLRAT( XLOOP,     YLOOP + 1);
+        if MZ_E( XLOOP, YLOOP) = Byte( OPEN) then CLRAT( XLOOP + 1, YLOOP);
+        if MZ_S( XLOOP, YLOOP) = Byte( OPEN) then CLRAT( XLOOP,     YLOOP - 1);
+        if MZ_W( XLOOP, YLOOP) = Byte( OPEN) then CLRAT( XLOOP - 1, YLOOP)
+      end
   end;
 
 
@@ -845,10 +884,8 @@ begin  { RUNNER }
   QUICKPLT := false;
   READMAZE;
   CLROOMFG( MAZEX, MAZEY);
-  _done := false;
   repeat
-    RUNMAIN;
-    if _done then exit
+    if RUNMAIN = U_RUNNER then exit
   until false
 end;  { RUNNER }
 

@@ -87,6 +87,20 @@ const
   MALIKTO  =  5514;  { L7: blades all }
   KADORTO  =  6673;  { L7: full blades }
 
+  { --- Unwinding: AP EXIT( P) ---
+    Apple Pascal EXIT( P) returns from the enclosing procedure P however
+    deep the call it is made from; Mad Pascal's exit only leaves the
+    current routine.  So a routine that can EXIT past itself returns a Byte
+    unwind code: UNWNONE for a normal return, else the target procedure's
+    AP number within its segment (CASTLE P010A0F ADVNTINN -> $0F), declared
+    in the segment unit as U_<procedure>.  After such a call a caller does:
+      UNWNONE        carry on;
+      its own code   stop unwinding: end as if its body had finished;
+      any other      pass it on: exit( code).
+    A number, not a level count: the same routine can be reached by call
+    chains of different depths. }
+  UNWNONE  = 0;
+
 implementation
 
 end.

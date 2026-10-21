@@ -1,26 +1,33 @@
 unit SPECUNIT;
 
 { Wizardry I — SPECIALS segment.
-  Source: apple/wiz1b/SPECIALS + apple/wiz1b/SPECIALS2.
+  Source: apple/Wizardry_v3-2/Wiz1B.DSK/SPECIALS + SPECIALS2 (v3.2).
   Key changes from Apple Pascal:
-    - EXIT(SPECIALS) from nested procs -> _done := true; exit (flag checked on return)
+    - EXIT(SPECIALS) / EXIT(LOOKLOST) / EXIT(FINDDOOR) / EXIT(P010328) past
+      the current routine -> unwind codes U_* (CONSTS).  Where the routine is
+      the last thing SPECIALS runs (INITGAME, SPCMISC and its final case:
+      GETYN, ITM2PASS, FEEIS) a plain exit already ends the segment.
     - MOVELEFT/SIZEOF record copy -> LOADTCHAR / LOADTMAZE (pointer-aware loaders)
     - Variant record access LOSTXYL.LOCATION[n] -> LOSTXYL[n] (flat array)
     - MAZE.E[x][y] -> MAZE.E^[x][y]
     - GTSERIAL / COPYPROT / FINDFILE dir-scan -> skipped (Atari port)
-    - SWITCHLOC flood-fill -> simplified placeholder (TODO: implement fully)
+    - SWITCHLOC's recursive TRYADJ -> loop with an explicit stack, same
+      visiting order (MP locals are static, and a deep fill would overflow
+      the 6502 stack).
     - MP nesting tested >=7 levels; all procs at original nesting depth. }
 
 interface
 
-uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+uses TYPES, CONSTS, GLOBALS, UTIL, SCREEN;
 
 procedure SPECIALS;
 
 implementation
 
-var
-  _done : Boolean;   { set true to simulate EXIT(SPECIALS) from a nested proc }
+const
+  U_SPECIALS = $01;       { unwind targets: AP P010301, P010303, P010327 }
+  U_LOOKLOST = $03;
+  U_FINDDOOR = $27;
 
 
 { MP cannot type-check ARRAY_OF_PTR[i].FIELD correctly for non-trivial types;
@@ -52,7 +59,7 @@ var
   { ────────────────────────────────────────────────────────────────────────── }
   { INSPECT — find and recover lost characters from the current maze room.    }
   { ────────────────────────────────────────────────────────────────────────── }
-  procedure INSPECT;
+  function INSPECT: Byte;
   var
     PICKCNT  : SmallInt;
     PICKLIST : array[ 0..6] of SmallInt;   { AP: 1..6, extended to 0..6 }
@@ -68,9 +75,10 @@ var
 
     procedure LOOKLOST;
 
-      procedure FOUNDLOS;
+      function FOUNDLOS: Byte;
       begin
-        if PICKCNT >= 5 then exit;
+        FOUNDLOS := UNWNONE;
+        if PICKCNT >= 5 then exit( U_LOOKLOST);         { EXIT( LOOKLOST) }
         PICKCNT := PICKCNT + 1;
         PICKLIST[ PICKCNT] := PICKCHAR;
         Write( PICKCNT); Write( ') ');
@@ -86,7 +94,7 @@ var
           if not PICKREC.INMAZE then
             if PICKREC.LOSTXYL[ 3] = MAZELEV then      { AP: LOSTXYL.LOCATION[3] }
               if INMYROOM[ PICKREC.LOSTXYL[ 1], PICKREC.LOSTXYL[ 2]] then
-                FOUNDLOS
+                if FOUNDLOS = U_LOOKLOST then exit
         end;
       if PICKCNT = 0 then WriteLn( '** NO ONE **')
     end;
@@ -97,14 +105,14 @@ var
     begin
       if PARTYCNT = 6 then
         begin
-          MVCURSOR( 0, 20); Write( Chr( 11));
+          GotoXY( 0, 20); Write( Chr( 11));
           WriteLn( 'YOU HAVE 6 - PRESS [RET]');
-          MVCURSOR( 41, 0);
+          GotoXY( 41, 0);
           repeat GETKEY until INCHAR = Chr( CRETURN);
           exit
         end;
       repeat
-        MVCURSOR( 0, 20); Write( Chr( 11));
+        GotoXY( 0, 20); Write( Chr( 11));
         Write( 'GET WHO (0=EXIT) >');
         GETKEY;
         PICKCHAR := Ord( INCHAR) - Ord( '0');
@@ -122,7 +130,7 @@ var
       SAVETCHAR( PICKLIST[ PICKCHAR], TC^);
       PICKLIST[ PICKCHAR] := -1;
       PARTYCNT := PARTYCNT + 1;
-      MVCURSOR( 0, 3 + PICKCHAR); Write( Chr( 29))
+      GotoXY( 0, 3 + PICKCHAR); Write( Chr( 29))
     end;
 
 
@@ -168,15 +176,15 @@ var
     Write( Chr( 12)); Write( 'LOOKING');
     TEXTMODE; EXPLROOM; LOOKLOST;
     repeat
-      MVCURSOR( 0, 20); Write( 'OPTIONS: ');
+      GotoXY( 0, 20); Write( 'OPTIONS: ');
       if PICKCNT > 0 then Write( 'P)ICK UP, ');
       Write( 'L)EAVE');
-      repeat MVCURSOR( 41, 0); GETKEY until (INCHAR = 'P') or (INCHAR = 'L');
+      repeat GotoXY( 41, 0); GETKEY until (INCHAR = 'P') or (INCHAR = 'L');
       if INCHAR = 'P' then if PICKCNT > 0 then PICKUP
     until INCHAR = 'L';
     XGOTO  := XRUNNER;
     GRAPHICS;
-    _done  := true
+    Result := U_SPECIALS                                { EXIT( SPECIALS) }
   end;  { INSPECT }
 
 
@@ -244,7 +252,7 @@ var
         repeat
           Write( Chr( 12)); GotoXY( 0, 11);
           Write( ' SCENARIO DISK IN DRIVE, PRESS [RETURN]');
-          repeat MVCURSOR( 41, 0); GETKEY until INCHAR = Chr( CRETURN);
+          repeat GotoXY( 41, 0); GETKEY until INCHAR = Chr( CRETURN);
           SCNTOCBL := FINDFILE( DRIVE1, 'SCENARIO.DATA')
         until SCNTOCBL >= 0;
         TIMEDLAY := 2000;
@@ -256,8 +264,7 @@ var
     XGOTO    := XCASTLE;
     Write( Chr( 12)); TEXTMODE; MAZESCRN;
     MAZEX    := 0; MAZEY    := 0; MAZELEV  := 0;
-    PARTYCNT := 0; DIRECTIO := 0; ACMOD2   := 0;
-    _done    := true
+    PARTYCNT := 0; DIRECTIO := 0; ACMOD2   := 0
   end;  { INITGAME }
 
 
@@ -300,7 +307,7 @@ var
       begin
         if LINECNT = 15 then
           begin
-            CLRRECT( 13, 6, 26, 4); MVCURSOR( 19, 7); PRINTSTR( '[RET] FOR MORE');
+            CLRRECT( 13, 6, 26, 4); MVCURSOR( 19, 7); PRINTSTR( '[RET] FOR MORE'); UNITCLEAR( 1);
             repeat GETKEY until INCHAR = Chr( CRETURN);
             CLRRECT( 13, 6, 26, 4); CLRRECT( 1, 11, 38, 4);
             LINECNT := 11
@@ -316,7 +323,7 @@ var
       repeat DO1LINE until STRBUFF.ENDMSG;
       if PRESSRET then
         begin
-          CLRRECT( 13, 6, 26, 4); MVCURSOR( 21, 7); PRINTSTR( 'PRESS [RET]');
+          CLRRECT( 13, 6, 26, 4); MVCURSOR( 21, 7); PRINTSTR( 'PRESS [RET]'); UNITCLEAR( 1);
           repeat GETKEY until INCHAR = Chr( CRETURN);
           CLRRECT( 13, 6, 26, 4)
         end
@@ -328,14 +335,18 @@ var
     begin
       GOTITEM := false;
       TC := CHARACTR[ CHARX];
-      if TC.POSS.POSSCNT = 8 then exit;
-      for POSSX := 1 to TC.POSS.POSSCNT do
+      PAUSE1;                                           { v3.2 WC034 messages }
+      CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 12);
+      PRINTSTR( GETNAME( TC^));
+      for POSSX := 1 to TC^.POSS.POSSCNT do
         begin
           PP := GETPOSS( TC^, POSSX);
-          if PP.EQINDEX = ITEMX then exit
+          if PP.EQINDEX = ITEMX then
+            begin PRINTSTR( ' ALREADY HAS ONE'); exit end
         end;
-      CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11);
-      PRINTSTR( GETNAME( TC^)); PRINTSTR( ' GOT ITEM');
+      if TC.POSS.POSSCNT = 8 then
+        begin PRINTSTR( ' IS FULL'); exit end;
+      PRINTSTR( ' GOT ITEM');
       POSSX := TC.POSS.POSSCNT + 1;
       TC.POSS.POSSCNT := POSSX;
       PP := GETPOSS( TC^, POSSX);
@@ -390,7 +401,7 @@ var
       TC := CHARACTR[ WADEX];
       if AUX0 = -1 then AUX0 := Random( 7);
       case Byte( AUX0) of
-        0: if TC.STATUS < DEAD then
+        0: if TC^.STATUS < DEAD then
              begin
                TC.STATUS := OK;
                TC.HPMAX  := TC.HPMAX - 8;
@@ -410,7 +421,7 @@ var
         3: MAKWORSE( ASLEEP);
         4: MAKWORSE( PLYZE);
         5: MAKWORSE( STONED);
-        6: if TC.STATUS = DEAD then
+        6: if TC^.STATUS = DEAD then
              begin
                if Random( 10) < 3 then
                  begin
@@ -428,7 +439,7 @@ var
     begin
       CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11); PRINTSTR( 'SEARCH (Y/N) ?');
       repeat GETKEY until (INCHAR = 'Y') or (INCHAR = 'N');
-      if INCHAR = 'N' then begin _done := true; exit end;
+      if INCHAR = 'N' then exit;                        { EXIT( SPECIALS) }
       if AUX0 > 0 then
         begin ATTK012 := 0; ENEMYINX := AUX0; XGOTO := XCOMBAT end
       else
@@ -442,7 +453,7 @@ var
       for CHARX := 0 to PARTYCNT - 1 do
         begin
           TC := CHARACTR[ CHARX];
-          for POSX := 1 to TC.POSS.POSSCNT do
+          for POSX := 1 to TC^.POSS.POSSCNT do
             begin
               PP := GETPOSS( TC^, POSX);
               if PP.EQINDEX = AUX0 then exit
@@ -476,6 +487,7 @@ var
 
     procedure BCK2SHOP;
     begin
+      PAUSE2;                                           { v3.2 WC031 }
       MAZELEV := 0; Write( Chr( 12)); XGOTO := XNEWMAZE
     end;
 
@@ -518,9 +530,10 @@ var
           end
       end;
 
-      procedure CHKGOLD;
+      function CHKGOLD: Byte;
       var CHARX : SmallInt; TC : ^TCHAR;
       begin
+        CHKGOLD := UNWNONE;
         FillChar( GOLDTOT, 6, 0);
         for CHARX := 0 to PARTYCNT - 1 do
           begin
@@ -530,7 +543,7 @@ var
         if TESTLONG( GOLDTOT, FEE) <> -1 then exit;
         PRINTSTR( 'NOT ENOUGH $');
         if BOUNCEFL = 0 then BOUNCEBK;
-        _done := true
+        CHKGOLD := U_SPECIALS                           { EXIT( SPECIALS) }
       end;
 
       procedure PAYGOLD;
@@ -565,13 +578,12 @@ var
       if INCHAR = 'N' then
         begin
           if BOUNCEFL = 0 then BOUNCEBK;
-          _done := true; exit
+          exit                                          { EXIT( SPECIALS) }
         end
       else
         begin
           CLRRECT( 1, 11, 38, 4); MVCURSOR( 1, 11);
-          CHKGOLD;
-          if _done then exit;
+          if CHKGOLD = U_SPECIALS then exit;
           PAYGOLD;
           if BOUNCEFL > 0 then
             begin
@@ -598,19 +610,112 @@ var
     end;
 
 
-    { SWITCHLOC — spinner square.
-      AP: flood-fill through doors from current position to find a random
-          adjacent room to teleport into, then set direction randomly.
-      TODO: implement full door-following algorithm from apple/wiz1b/SPECIALS2
-            (P010325-P01032A).  Simplified version used for now. }
-    procedure SWITCHLOC;
-    begin
+    { SWITCHLOC — AP P010325: move the party through 1..n doors from the
+      current square (FINDDOOR), stopping early on any special square, then
+      face a random way.  AP TRYADJ is a recursive flood fill of the room
+      round (X, Y); here it is a loop over an explicit stack of (X, Y, next
+      neighbour to try), visiting squares in the same order. }
+    function SWITCHLOC: Byte;
+    const
+      R_NODOOR = 0;           { P010328 results besides U_FINDDOOR }
+      R_DOOR   = 1;
+    var
+      BEENHERE : array[ 0..19, 0..19] of Boolean;
+      DOORCNT  : SmallInt;    { doors gone through }
+      LIMITMOV : SmallInt;    { limits doors (rooms) moved through }
+
+
+      function CHK4DOOR( WALLTYPE: Byte; X, Y, MOVETOX, MOVETOY: SmallInt): Boolean;
+      { AP P01032A.  True = go through this door (AP: P010328 := TRUE;
+        EXIT( P010328)). }
+      begin
+        CHK4DOOR := false;
+        if ( WALLTYPE = Byte( OPEN)) or ( WALLTYPE = Byte( WALL)) then exit;
+        if WALLTYPE = Byte( HIDEDOOR) then
+          if Random( 100) < 65 then exit;
+        MOVETOX := ( MOVETOX + 20) mod 20;
+        MOVETOY := ( MOVETOY + 20) mod 20;
+        if ( DOORCNT = 0) or
+           ( not BEENHERE[ MOVETOX][ MOVETOY] and ( Random( 100) > ( 65 - LIMITMOV))) then
+          begin
+            SAVEX    := X;
+            SAVEY    := Y;
+            MAZEX    := MOVETOX;
+            MAZEY    := MOVETOY;
+            DOORCNT  := DOORCNT + 1;
+            CHK4DOOR := true
+          end
+      end;
+
+
+      function P010328( X0, Y0: SmallInt): Byte;
+      { AP P010328 with TRYADJ (P010329) unrolled: R_DOOR, R_NODOOR, or
+        U_FINDDOOR when a special square was reached (AP EXIT( FINDDOOR)). }
+      var
+        SX, SY, SN : array[ 0..399] of Byte;   { stack: square, next step }
+        SP         : SmallInt;
+        X, Y, I    : SmallInt;
+        STEP       : Byte;
+      begin
+        SP := 0;
+        SX[ 0] := ( X0 + 20) mod 20;
+        SY[ 0] := ( Y0 + 20) mod 20;
+        SN[ 0] := 0;
+        while SP >= 0 do
+          begin
+            X := SX[ SP];
+            Y := SY[ SP];
+            I := X * 20 + Y;
+            STEP := SN[ SP];
+            SN[ SP] := STEP + 1;
+            if STEP = 0 then                            { TRYADJ entry }
+              begin
+                if BEENHERE[ X][ Y] then
+                  Dec( SP)                              { EXIT( TRYADJ) }
+                else
+                  begin
+                    if MAZEFLOR.SQRETYPE[ MZB_SQX[ I]] <> Byte( NORMAL) then
+                      begin
+                        MAZEX := X;
+                        MAZEY := Y;
+                        exit( U_FINDDOOR)               { EXIT( FINDDOOR) }
+                      end;
+                    BEENHERE[ X][ Y] := true;
+                    if CHK4DOOR( MZB_N[ I], X, Y, X, Y + 1) then exit( R_DOOR);
+                    if CHK4DOOR( MZB_S[ I], X, Y, X, Y - 1) then exit( R_DOOR);
+                    if CHK4DOOR( MZB_E[ I], X, Y, X + 1, Y) then exit( R_DOOR);
+                    if CHK4DOOR( MZB_W[ I], X, Y, X - 1, Y) then exit( R_DOOR)
+                  end
+              end
+            else if STEP > 4 then
+              Dec( SP)                                  { TRYADJ done }
+            else if ( STEP = 1) and ( MZB_N[ I] = Byte( OPEN)) then
+              begin Inc( SP); SX[ SP] := X; SY[ SP] := ( Y + 1) mod 20; SN[ SP] := 0 end
+            else if ( STEP = 2) and ( MZB_W[ I] = Byte( OPEN)) then
+              begin Inc( SP); SX[ SP] := ( X + 19) mod 20; SY[ SP] := Y; SN[ SP] := 0 end
+            else if ( STEP = 3) and ( MZB_E[ I] = Byte( OPEN)) then
+              begin Inc( SP); SX[ SP] := ( X + 1) mod 20; SY[ SP] := Y; SN[ SP] := 0 end
+            else if ( STEP = 4) and ( MZB_S[ I] = Byte( OPEN)) then
+              begin Inc( SP); SX[ SP] := X; SY[ SP] := ( Y + 19) mod 20; SN[ SP] := 0 end
+          end;
+        Result := R_NODOOR
+      end;
+
+
+    begin { SWITCHLOC }
       XGOTO2 := XCOMBAT;
       XGOTO  := XRUNNER;
-      MAZEX    := Random( 20);
-      MAZEY    := Random( 20);
+      FillChar( BEENHERE, SizeOf( BEENHERE), 0);
+      DOORCNT := 0;
+      MZB_SQX[ MAZEX * 20 + MAZEY] := 0;
+      LIMITMOV := 0;                                    { FINDDOOR (P010327) }
+      while ( DOORCNT = 0) or ( Random( 65) > LIMITMOV) do
+        begin
+          if P010328( MAZEX, MAZEY) <> R_DOOR then break;   { EXIT( FINDDOOR) }
+          LIMITMOV := LIMITMOV + 10
+        end;
       DIRECTIO := Random( 4);
-      _done    := true
+      Result := U_SPECIALS                              { EXIT( SPECIALS) }
     end;
 
 
@@ -619,14 +724,14 @@ var
     LOADTMAZE( MAZELEV - 1, MAZEFLOR);
     BOUNCEFL := SPCINDEX;
     if BOUNCEFL = 0 then
-      begin SWITCHLOC; if _done then exit end;
+      if SWITCHLOC = U_SPECIALS then exit;
     XGOTO2  := XSCNMSG;
     CLRRECT( 1, 11, 38, 4);
     MSGBLK0 := FINDFILE( DRIVE1, 'SCENARIO.MESGS');
     if MSGBLK0 < 0 then
       begin
         MVCURSOR( 1, 11); PRINTSTR( 'MESGS LOST');
-        _done := true; exit
+        exit                                            { EXIT( SPECIALS) }
       end;
     CURMSGBL := 0;
     UNITREAD_MSG( MSGBLK0, MESSAGE[0]);
@@ -667,8 +772,7 @@ var
        9: LOOKOUT;
       10: RIDDLES;
       11: FEEIS
-    end;
-    { _done may have been set by GETYN or FEEIS inside the case }
+    end
   end;  { SPCMISC }
 
 
@@ -676,9 +780,8 @@ var
   { SPECIALS main body                                                         }
   { ────────────────────────────────────────────────────────────────────────── }
 begin
-  _done := false;
   if XGOTO = XINSAREA then
-    begin INSPECT; if _done then exit end;
+    if INSPECT = U_SPECIALS then exit;
   XGOTO    := XGOTO2;
   SPCINDEX := LLBASE04;
   if SPCINDEX < 0 then

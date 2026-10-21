@@ -1,69 +1,49 @@
 unit CAMPUNIT;
 
-{ Source: apple/wiz1c/CAMP, apple/wiz1c/CAMP2
+{ Source: apple/Wizardry_v3-2/Wiz1C.DSK/CAMP + CAMP2 (v3.2: WC017 WC026
+  WC029 WC038 WC040).
 
   Translation notes:
     - SEGMENT PROCEDURE CAMP -> unit procedure CAMP
-    - EXIT(CAMP)         -> _done := true; exit; propagate: if _done then exit
-    - EXIT(CASTSPEL)     -> _exitcastspel := true (via EXITCASTSPEL); propagate within CASTSPEL
-    - EXIT(CAMPDO)       -> exit (returns to INSPECT repeat loop)
-    - EXIT(DROPITEM)     -> exit
-    - EXIT(USEITEM)      -> exit
-    - EXIT(DOTRADE)      -> _exittrade := true; propagate in DOTRADE
-    - EXIT(DISBAND)      -> _exitdisband := true; propagate in DISBAND
-    - EXIT(IDENTIFY_PROC) -> exit
-    - EXIT(DSPITEMS)     -> exit
-    - EXIT(CHKSPCNT)     -> exit (when USEITEM_B is true)
+    - EXIT(CAMP / CASTSPEL / DOTRADE / DISBAND) past the current routine ->
+      unwind codes U_* (CONSTS); EXIT of the current routine -> exit
     - WITH CHARACTR[CAMPCHAR] DO -> TC := CHARACTR[CAMPCHAR]; TC.FIELD
-    - WRITE(CHR(12))     -> ClrScr
-    - GOTOXY(x,y)        -> GotoXY(x+1, y+1)  (CRT is 1-based)
-    - GOTOXY(41,0)       -> GotoXY(41, 0)  (off-screen cursor park)
-    - CHR(11)            -> WriteLn  (cursor-down / scroll approximation)
-    - CHR(29)            -> no-op    (clear to EOL)
-    - GETLINE(S)         -> GETLINE; S := GTSTRING
-    - GETCHARX(B,'T')    -> GETCHARX(B, 'T')
-    - UNITCLEAR(1)       -> CLEARPIC (all-Mode-E full screen clear)
-    - TEXTMODE           -> TEXTMODE (from UTIL)
-    - BASE12.GOTOX       -> XGOTO2
-    - MOVELEFT(IOCACHE[GETREC(ZOBJECT,IDX,SZ)],OBJ,SZ) -> LOADOBJREC(IDX, OBJ)
-    - MOVELEFT(IOCACHE[GETREC(ZZERO,0,SZ)],SCNTOC,SZ)  -> GTSCNTOC → GETREC + LOADSCNTOC
-    - MOVELEFT(CH, IOCACHE[GETRECW(ZCHAR,IDX,SZ)],SZ)  -> SAVETCHAR(IDX, CH)
-    - CHARREC.CLASS      -> CHARREC.XCLASS
-    - SCNTOC.RACE/CLASS/ALIGN/STATUS -> SCNTOC_RACE/CLASS/ALIGN/STATUS globals
+    - WRITE(CHR(12)) -> ClrScr; GOTOXY, CHR(11), CHR(29) as AP (SCREEN)
+    - WRITE( X :N)   -> WRITEINT / padded literals (MP ignores field widths)
+    - GETLINE(S)     -> GETLINE; S := GTSTRING;  READ( INCHAR) -> GETKEY
+    - BASE12.GOTOX   -> XGOTO2
+    - MOVELEFT TOBJREC / TCHAR / TSCNTOC -> LOADOBJREC / SAVETCHAR / GTSCNTOC
+    - SCNTOC.RACE/CLASS/ALIGN/STATUS[X] -> RACENAME/CLASSNAME/ALIGNNAME/STATNAME
     - SCNTOC.SPELLHSH[X] -> SPTR.SPELLHSH[X] via SPTR := SCNTOC.SPELLS
-    - LOSTXYL.POISNAMT[1] -> LOSTXYL[1]
-    - LOSTXYL.LOCATION[1..3] -> LOSTXYL[1..3]
-    - LOSTXYL.AWARDS[4]  -> LOSTXYL[4]
-    - RANDOM MOD N       -> Random(N)
-    - ARRAY[FALSE..TRUE] -> array[0..1]  (index with Byte(BOOL_EXPR))
-    - CLASSUSE[CLASS]    -> CLASSUSE[Byte(TC.XCLASS)]
-    - USEITEM (local Boolean in CASTSPEL) -> USEITEM_B (renamed to avoid proc name clash)
-    - SUCC(STATUS)       -> TSTATUS(Byte(STATUS) + 1)  (safe for DEAD->ASHES->LOST)
-    - STATUS < DEAD      -> Byte(STATUS) < Byte(DEAD)
-    - BSET_CU()          -> converts BYTE comparison result to Boolean
+    - LOSTXYL.POISNAMT[1] / LOCATION[1..3] / AWARDS[4] -> LOSTXYL[1] / [1..3] / [4]
+    - ARRAY[FALSE..TRUE] -> array[0..1], indexed with Byte(BOOL_EXPR)
+    - USEITEM (Boolean in CASTSPEL) -> USEITEM_B (clashes with procedure USEITEM)
+    - SUCC(STATUS) -> TSTATUS(Byte(STATUS) + 1)
+    - record copies (TWIZLONG, TPOSSESS) -> field copies / pointer copies
 }
 
 interface
 
-uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+uses TYPES, CONSTS, GLOBALS, UTIL, SCREEN;
 
 procedure CAMP;
 
 implementation
 
-{ ── Unit-level constants ─────────────────────────────────────────────────── }
-{ Chevron indicator chars: each char maps to a LOSTXYL[4] bit.
-  '$' cannot appear raw in an MP string literal ($-signs start hex literals);
-  use #36 char-code syntax instead. }
 const
+  U_CAMP     = $01;       { unwind targets: AP P010C01, P010C06, P010C17, }
+  U_CASTSPEL = $06;       {   P010C21                                     }
+  U_DOTRADE  = $17;
+  U_DISBAND  = $21;
+
+  { Chevron characters, one per LOSTXYL[4] bit ('$' as #36: MP reads $ as hex). }
   CHEVTBL: array[0..15] of char = (
     '>','!',#36,'#','&','*','<','?','B','C','P','K','O','D','G','@');
 
-{ ── Unit-level helpers ───────────────────────────────────────────────────── }
 
 procedure SETSTATUS_CU(TC: PTCHAR; V: TSTATUS);
 begin
-  TC.STATUS := TSTATUS(Byte(V))
+  TC^.STATUS := TSTATUS(Byte(V))
 end;
 
 function BSET_CU(B: Byte): Boolean;
@@ -71,10 +51,6 @@ begin
   if B <> 0 then BSET_CU := true else BSET_CU := false
 end;
 
-
-{ ══════════════════════════════════════════════════════════════════════════════
-  CAMP
-  ══════════════════════════════════════════════════════════════════════════════ }
 
 procedure CAMP;
 
@@ -85,10 +61,8 @@ var
   CANUSE   : array[ 0..7] of Boolean;
   DISPSTAT : Boolean;
   OBJI     : SmallInt;
-  _done    : Boolean;
 
 
-  { ── GTSCNTOC ── }
   procedure GTSCNTOC;
   var DUMMY : SmallInt;
   begin
@@ -97,7 +71,6 @@ var
   end;
 
 
-  { ── AASTRAA ── }
   procedure AASTRAA(ASTRA: string);
   begin
     CENTSTR( Concat( '** ', Concat( ASTRA, ' **')))
@@ -105,21 +78,29 @@ var
 
 
   { ── INSPECT ── }
-  procedure INSPECT;
-
+  function INSPECT: Byte;
   var
     CAMPCHAR : SmallInt;
     TC       : PTCHAR;
     SKN      : PTSPELLSKN;
 
 
-    { ── DSPSPELS ── }
     procedure DSPSPELS;
     var INDX : SmallInt;
     begin
       TC := CHARACTR[ CAMPCHAR];
-      GotoXY( 1, 10);
-      Write( ' ' : 7);
+      GotoXY( 24, 2);                                   { v3.2 WC038 }
+      PRNTLONG( TC.GOLD);
+      GotoXY( 24, 6);
+      WRITEINT( TC.HPLEFT, 3);
+      GotoXY( 24, 7);
+      Write( STATNAME( Byte( TC^.STATUS)));
+      if TC.LOSTXYL[ 1] > 0 then
+        Write( ' & POISONED')
+      else
+        Write( '           ');
+      GotoXY( 0, 9);
+      Write( '       ');
       Write( ' MAGE ');
       for INDX := 1 to 7 do
         begin
@@ -127,7 +108,7 @@ var
           if INDX < 7 then Write( '/')
         end;
       WriteLn;
-      Write( ' ' : 6);
+      Write( '      ');
       Write( 'PRIEST ');
       for INDX := 1 to 7 do
         begin
@@ -137,7 +118,6 @@ var
     end;
 
 
-    { ── DSPITEMS ── }
     procedure DSPITEMS;
     var
       ITEMX  : SmallInt;
@@ -145,18 +125,18 @@ var
       PP     : ^TPOSSESS;
     begin
       TC := CHARACTR[ CAMPCHAR];
-      GotoXY( 1, 13);
+      GotoXY( 0, 12);
       Write( '*=EQUIP, -=CURSED, ?=UNKNOWN, #=UNUSABLE');
       for ITEMX := 14 to 17 do
         begin
-          GotoXY( 1, ITEMX + 1);
-          Write( ' ')
+          GotoXY( 0, ITEMX);
+          Write( Chr( 29))
         end;
       if TC.POSS.POSSCNT = 0 then exit;
-      for ITEMX := 1 to TC.POSS.POSSCNT do
+      for ITEMX := 1 to TC^.POSS.POSSCNT do
         begin
-          GotoXY( 21 - 20 * (ITEMX mod 2),
-                  15 + ((ITEMX - 1) div 2));
+          GotoXY( 20 - 20 * (ITEMX mod 2),
+                  14 + ((ITEMX - 1) div 2));
           PP := TC.POSS.POSSESS[ ITEMX];
           if OBJIDS[ ITEMX - 1] <> PP.EQINDEX then
             begin
@@ -164,10 +144,10 @@ var
               OBJIDS[ ITEMX - 1]    := PP.EQINDEX;
               OBJNAMES[ ITEMX-1][1] := OBJREC.NAME;
               OBJNAMES[ ITEMX-1][0] := OBJREC.NAMEUNK;
-              CANUSE[   ITEMX - 1]  := OBJREC.CLASSUSE[ Byte( TC.XCLASS)];
+              CANUSE[   ITEMX - 1]  := OBJREC.CLASSUSE[ Byte( TC^.XCLASS)];
               CURSEDXX[ ITEMX - 1]  := OBJREC.CURSED
             end;
-          Write( ITEMX : 1);
+          Write( ITEMX);
           Write( ')');
           if PP.EQUIPED then
             if CURSEDXX[ ITEMX - 1] then Write( '-')
@@ -182,66 +162,68 @@ var
     end;
 
 
-    { ── CASTSPEL ── }
-    procedure CASTSPEL(SPELHASH: SmallInt);
-
+    { ── CASTSPEL: UNWNONE, or U_CAMP (KANDI, DUMAPIC, MALOR) ── }
+    function CASTSPEL(SPELHASH: SmallInt): Byte;
     var
-      USEITEM_B     : Boolean;   { AP: USEITEM — renamed to avoid clash with USEITEM proc }
-      SPELNAME      : string[ 40];
-      HASHCALC      : SmallInt;
-      SPELLI        : SmallInt;
-      HEALME        : SmallInt;
-      TC_HEAL       : PTCHAR;
-      SPTR          : ^TSPELBLK;
-      _exitcastspel : Boolean;
+      USEITEM_B : Boolean;
+      SPELNAME  : string[ 40];
+      HASHCALC  : SmallInt;
+      SPELLI    : SmallInt;
+      HEALME    : SmallInt;
+      TC_HEAL   : PTCHAR;
+      U         : Byte;
 
 
-      procedure EXITCASTSPEL(EXITSTR: string);  { AP: EXITCAST -> EXIT(CASTSPEL) }
+      function EXITCAST(EXITSTR: string): Byte;
       begin
         AASTRAA( EXITSTR);
         DSPSPELS;
-        _exitcastspel := true
+        EXITCAST := U_CASTSPEL                          { EXIT( CASTSPEL) }
       end;
 
 
-      procedure HEALWHO;
+      function HEALWHO: Byte;
       begin
+        HEALWHO := UNWNONE;
         HEALME := GETCHARX( true, 'CAST ON WHO');
         if HEALME = -1 then
-          begin EXITCASTSPEL( 'NOT IN THE PARTY'); exit end
+          HEALWHO := EXITCAST( 'NOT IN THE PARTY')
       end;
 
 
-      procedure CHKSPCNT(PRIESTGR: SmallInt; SPELLIDX: SmallInt);
+      function CHKSPCNT(PRIESTGR: SmallInt; SPELLIDX: SmallInt): Byte;
       begin
+        CHKSPCNT := UNWNONE;
         if USEITEM_B then exit;
-        TC   := CHARACTR[ CAMPCHAR];
-        SKN  := TC.SPELLSKN;
+        TC  := CHARACTR[ CAMPCHAR];
+        SKN := TC^.SPELLSKN;
         if (TC.PRIESTSP[ PRIESTGR] <= 0) or (not SKN^[ SPELLIDX]) then
-          begin EXITCASTSPEL( 'YOU CANT CAST IT'); exit end
+          CHKSPCNT := EXITCAST( 'YOU CANNOT CAST IT')   { v3.2 WC029 }
       end;
 
 
-      procedure DECPRIEST(PRIESTGR: SmallInt);
+      function DECPRIEST(PRIESTGR: SmallInt): Byte;
       begin
+        DECPRIEST := UNWNONE;
         if not USEITEM_B then
           begin
             TC := CHARACTR[ CAMPCHAR];
             TC.PRIESTSP[ PRIESTGR] := TC.PRIESTSP[ PRIESTGR] - 1
           end;
-        if FIZZLES > 0 then EXITCASTSPEL( 'SPELL HAS NO EFFECT')
+        if FIZZLES > 0 then
+          DECPRIEST := EXITCAST( 'SPELL HAS NO EFFECT')
       end;
 
 
-      procedure DOHEAL(HPTRIES:  SmallInt;
-                       MAXHPTRY: SmallInt;
-                       PRIESTGR: SmallInt;
-                       SPELLIDX: SmallInt);
+      function DOHEAL(HPTRIES:  SmallInt;
+                      MAXHPTRY: SmallInt;
+                      PRIESTGR: SmallInt;
+                      SPELLIDX: SmallInt): Byte;
       var HPHEALED : SmallInt;
       begin
-        CHKSPCNT( PRIESTGR, SPELLIDX); if _exitcastspel then exit;
-        HEALWHO;                        if _exitcastspel then exit;
-        DECPRIEST( PRIESTGR);           if _exitcastspel then exit;
+        Result := CHKSPCNT( PRIESTGR, SPELLIDX);  if Result <> UNWNONE then exit;
+        Result := HEALWHO;                        if Result <> UNWNONE then exit;
+        Result := DECPRIEST( PRIESTGR);           if Result <> UNWNONE then exit;
         HPHEALED := 0;
         TC_HEAL  := CHARACTR[ HEALME];
         if HPTRIES = -1 then
@@ -249,7 +231,7 @@ var
             { MADI }
             HPHEALED := TC_HEAL.HPMAX;
             TC_HEAL.LOSTXYL[ 1] := 0;
-            if Byte( TC_HEAL.STATUS) < Byte( DEAD) then
+            if Byte( TC_HEAL^.STATUS) < Byte( DEAD) then
               SETSTATUS_CU( TC_HEAL, OK)
           end
         else
@@ -261,7 +243,7 @@ var
         TC_HEAL.HPLEFT := TC_HEAL.HPLEFT + HPHEALED;
         if TC_HEAL.HPLEFT > TC_HEAL.HPMAX then
           TC_HEAL.HPLEFT := TC_HEAL.HPMAX;
-        GotoXY( 1, 24);
+        GotoXY( 0, 23);
         Write( 'CURED ');
         Write( HPHEALED);
         Write( ' HP - NOW ');
@@ -271,25 +253,25 @@ var
         GotoXY( 41, 0);
         PAUSE2;
         DSPSPELS;
-        _exitcastspel := true    { AP: EXIT(CASTSPEL) }
+        Result := U_CASTSPEL                            { EXIT( CASTSPEL) }
       end;
 
 
-      procedure DOKANDI;
+      function DOKANDI: Byte;
       begin
-        CHKSPCNT( 5, 42); if _exitcastspel then exit;
-        DECPRIEST( 5);    if _exitcastspel then exit;
-        DISPSTAT  := true;
-        LLBASE04  := CAMPCHAR;
-        XGOTO2    := XCASTLE;
-        XGOTO     := XCAMPSTF;
-        _done     := true         { AP: EXIT(CAMP) }
+        Result := CHKSPCNT( 5, 42);  if Result <> UNWNONE then exit;
+        Result := DECPRIEST( 5);     if Result <> UNWNONE then exit;
+        DISPSTAT := true;
+        LLBASE04 := CAMPCHAR;
+        XGOTO2   := XCASTLE;
+        XGOTO    := XCAMPSTF;
+        Result   := U_CAMP                              { EXIT( CAMP) }
       end;
 
 
-      procedure DODIKADO(DIKADOXX: SmallInt);
+      function DODIKADO(DIKADOXX: SmallInt): Byte;
 
-        procedure DIKADORT;
+        function DIKADORT: Byte;
         begin
           TC_HEAL := CHARACTR[ HEALME];
           if Random( 100) <= 4 * TC_HEAL.ATTRIB[ VITALITY] then
@@ -302,51 +284,50 @@ var
               else
                 TC_HEAL.ATTRIB[ VITALITY] := TC_HEAL.ATTRIB[ VITALITY] - 1
             end;
-          if Byte( TC_HEAL.STATUS) = 0 then  { OK = 0 }
-            EXITCASTSPEL( 'EXCELSIOR')
+          if Byte( TC_HEAL^.STATUS) = 0 then             { OK = 0 }
+            DIKADORT := EXITCAST( 'EXCELSIOR')
           else
             begin
-              SETSTATUS_CU( TC_HEAL, TSTATUS( Byte( TC_HEAL.STATUS) + 1));  { AP: SUCC(STATUS) }
-              EXITCASTSPEL( 'OOPPS!')
+              SETSTATUS_CU( TC_HEAL, TSTATUS( Byte( TC_HEAL^.STATUS) + 1));
+              DIKADORT := EXITCAST( 'OOPPS!')
             end
-        end;  { DIKADORT }
+        end;
 
       begin  { DODIKADO }
         if DIKADOXX = 5 then
-          begin CHKSPCNT( DIKADOXX, 43); if _exitcastspel then exit end
+          Result := CHKSPCNT( DIKADOXX, 43)
         else
-          begin CHKSPCNT( DIKADOXX, 50); if _exitcastspel then exit end;
-        HEALWHO;    if _exitcastspel then exit;
-        DECPRIEST( DIKADOXX); if _exitcastspel then exit;
+          Result := CHKSPCNT( DIKADOXX, 50);
+        if Result <> UNWNONE then exit;
+        Result := HEALWHO;              if Result <> UNWNONE then exit;
+        Result := DECPRIEST( DIKADOXX); if Result <> UNWNONE then exit;
         TC_HEAL := CHARACTR[ HEALME];
         if DIKADOXX = 5 then
           begin
-            if Byte( TC_HEAL.STATUS) = 5 then  { DEAD = 5 }
-              begin DIKADORT; if _exitcastspel then exit end
-            else if Byte( TC_HEAL.STATUS) = 6 then  { ASHES = 6 }
-              begin EXITCASTSPEL( '"KADORTO" NEEDED'); exit end
+            if Byte( TC_HEAL^.STATUS) = 5 then           { DEAD }
+              exit( DIKADORT)
+            else if Byte( TC_HEAL^.STATUS) = 6 then      { ASHES }
+              exit( EXITCAST( '"KADORTO" NEEDED'))
           end
         else
-          if (Byte( TC_HEAL.STATUS) = 5) or (Byte( TC_HEAL.STATUS) = 6) then
-            begin DIKADORT; if _exitcastspel then exit end
-          else if Byte( TC_HEAL.STATUS) = 7 then  { LOST = 7 }
-            begin EXITCASTSPEL( 'LOST'); exit end;
-        if _exitcastspel then exit;
-        EXITCASTSPEL( 'NOT DEAD')
-      end;  { DODIKADO }
+          if (Byte( TC_HEAL^.STATUS) = 5) or (Byte( TC_HEAL^.STATUS) = 6) then
+            exit( DIKADORT)
+          else if Byte( TC_HEAL^.STATUS) = 7 then        { LOST }
+            exit( EXITCAST( 'LOST'));
+        Result := EXITCAST( 'NOT DEAD')
+      end;
 
 
-      procedure DODUMAPI;
+      function DODUMAPI: Byte;
       begin
         if not USEITEM_B then
           begin
             TC  := CHARACTR[ CAMPCHAR];
-            SKN := TC.SPELLSKN;
+            SKN := TC^.SPELLSKN;
             if (TC.MAGESP[ 1] = 0) or (not SKN^[ 4]) then
-              begin EXITCASTSPEL( 'YOU CANT CAST IT'); exit end
+              exit( EXITCAST( 'YOU CANNOT CAST IT'))   { v3.2 WC029 }
           end;
-        if _exitcastspel then exit;
-        if FIZZLES > 0 then begin EXITCASTSPEL( 'SPELL FAILS'); exit end;
+        if FIZZLES > 0 then exit( EXITCAST( 'SPELL FAILS'));
         if not USEITEM_B then
           begin
             TC := CHARACTR[ CAMPCHAR];
@@ -355,21 +336,20 @@ var
         LLBASE04 := CAMPCHAR;
         XGOTO2   := XGILGAMS;
         XGOTO    := XCAMPSTF;
-        _done    := true          { AP: EXIT(CAMP) }
+        DODUMAPI := U_CAMP                              { EXIT( CAMP) }
       end;
 
 
-      procedure DOMALOR;
+      function DOMALOR: Byte;
       begin
         if not USEITEM_B then
           begin
             TC  := CHARACTR[ CAMPCHAR];
-            SKN := TC.SPELLSKN;
+            SKN := TC^.SPELLSKN;
             if (TC.MAGESP[ 7] = 0) or (not SKN^[ 19]) then
-              begin EXITCASTSPEL( 'YOU CANT CAST IT'); exit end
+              exit( EXITCAST( 'YOU CANNOT CAST IT'))   { v3.2 WC029 }
           end;
-        if _exitcastspel then exit;
-        if FIZZLES > 0 then begin EXITCASTSPEL( 'SPELL FAILS'); exit end;
+        if FIZZLES > 0 then exit( EXITCAST( 'SPELL FAILS'));
         if not USEITEM_B then
           begin
             TC := CHARACTR[ CAMPCHAR];
@@ -378,21 +358,18 @@ var
         LLBASE04 := CAMPCHAR;
         XGOTO2   := XINSPECT;
         XGOTO    := XCAMPSTF;
-        _done    := true          { AP: EXIT(CAMP) }
+        DOMALOR  := U_CAMP                              { EXIT( CAMP) }
       end;
 
 
     begin  { CASTSPEL }
-      _exitcastspel := false;
       DISPSTAT  := false;
       USEITEM_B := BSET_CU( SPELHASH > 0);
-      TC  := CHARACTR[ CAMPCHAR];
-      SKN := TC.SPELLSKN;
       if SPELHASH = -1 then
         begin
-          GotoXY( 1, 19);
-          WriteLn;  { AP: WRITE(CHR(11)) }
-          Write( 'WHAT SPELL ? >' : 24);
+          GotoXY( 0, 18);
+          Write( Chr( 11));
+          Write( '          WHAT SPELL ? >');
           GETLINE;
           SPELNAME := GTSTRING;
           SPELHASH := Length( SPELNAME);
@@ -403,80 +380,88 @@ var
             end
         end;
       GotoXY( 41, 0);
-      Write( SPELHASH : 6);
+      WRITEINT( SPELHASH, 6);
       Write( ' ');
+      U := UNWNONE;
       if SPELHASH = DIOS then
-        begin DOHEAL( 1, 8, 1, 23); if _exitcastspel or _done then exit end
+        U := DOHEAL( 1, 8, 1, 23)
       else if SPELHASH = MILWA then
         begin
-          CHKSPCNT( 1, 25); if _exitcastspel then exit;
-          DECPRIEST( 1);    if _exitcastspel then exit;
-          LIGHT := 15 + Random( 15)
+          U := CHKSPCNT( 1, 25);
+          if U = UNWNONE then U := DECPRIEST( 1);
+          if U = UNWNONE then LIGHT := 15 + Random( 15)
         end
       else if SPELHASH = DUMAPI then
-        begin DODUMAPI; if _exitcastspel or _done then exit end
+        U := DODUMAPI
       else if SPELHASH = KANDI then
-        begin DOKANDI; if _done then exit end
+        U := DOKANDI
       else if SPELHASH = LOMILWA then
         begin
-          CHKSPCNT( 3, 31); if _exitcastspel then exit;
-          DECPRIEST( 3);    if _exitcastspel then exit;
-          LIGHT := 32000
+          U := CHKSPCNT( 3, 31);
+          if U = UNWNONE then U := DECPRIEST( 3);
+          if U = UNWNONE then LIGHT := 32000
         end
       else if SPELHASH = LATUMOFI then
         begin
-          CHKSPCNT( 4, 37); if _exitcastspel then exit;
-          HEALWHO;          if _exitcastspel then exit;
-          DECPRIEST( 4);    if _exitcastspel then exit;
-          TC_HEAL := CHARACTR[ HEALME];
-          TC_HEAL.LOSTXYL[ 1] := 0
+          U := CHKSPCNT( 4, 37);
+          if U = UNWNONE then U := HEALWHO;
+          if U = UNWNONE then U := DECPRIEST( 4);
+          if U = UNWNONE then
+            begin
+              TC_HEAL := CHARACTR[ HEALME];
+              TC_HEAL.LOSTXYL[ 1] := 0
+            end
         end
       else if SPELHASH = DIALKO then
         begin
-          CHKSPCNT( 3, 32); if _exitcastspel then exit;
-          HEALWHO;          if _exitcastspel then exit;
-          DECPRIEST( 3);    if _exitcastspel then exit;
-          TC_HEAL := CHARACTR[ HEALME];
-          if (Byte( TC_HEAL.STATUS) = 3) or (Byte( TC_HEAL.STATUS) = 2) then  { PLYZE=3, ASLEEP=2 }
-            SETSTATUS_CU( TC_HEAL, OK)
+          U := CHKSPCNT( 3, 32);
+          if U = UNWNONE then U := HEALWHO;
+          if U = UNWNONE then U := DECPRIEST( 3);
+          if U = UNWNONE then
+            begin
+              TC_HEAL := CHARACTR[ HEALME];
+              if (Byte( TC_HEAL^.STATUS) = 3) or (Byte( TC_HEAL^.STATUS) = 2) then  { PLYZE, ASLEEP }
+                SETSTATUS_CU( TC_HEAL, OK)
+            end
         end
       else if SPELHASH = DIAL then
-        begin DOHEAL( 2, 8, 4, 35); if _exitcastspel or _done then exit end
+        U := DOHEAL( 2, 8, 4, 35)
       else if SPELHASH = MAPORFIC then
         begin
-          CHKSPCNT( 4, 38); if _exitcastspel then exit;
-          DECPRIEST( 4);    if _exitcastspel then exit;
-          ACMOD2 := 2
+          U := CHKSPCNT( 4, 38);
+          if U = UNWNONE then U := DECPRIEST( 4);
+          if U = UNWNONE then ACMOD2 := 2
         end
       else if SPELHASH = DIALMA then
-        begin DOHEAL( 3, 8, 5, 39); if _exitcastspel or _done then exit end
+        U := DOHEAL( 3, 8, 5, 39)
       else if SPELHASH = DI then
-        begin DODIKADO( 5); if _exitcastspel or _done then exit end
+        U := DODIKADO( 5)
       else if SPELHASH = MADI then
-        begin DOHEAL( -1, -1, 6, 46); if _exitcastspel or _done then exit end
+        U := DOHEAL( -1, -1, 6, 46)
       else if SPELHASH = KADORTO then
-        begin DODIKADO( 7); if _exitcastspel or _done then exit end
+        U := DODIKADO( 7)
       else if SPELHASH = MALOR then
-        begin DOMALOR; if _exitcastspel or _done then exit end
+        U := DOMALOR
       else
-        EXITCASTSPEL( 'WHAT?');
-      if _exitcastspel then exit;
-      EXITCASTSPEL( 'DONE!')
+        U := EXITCAST( 'WHAT?');
+      if U = UNWNONE then U := EXITCAST( 'DONE!');
+      if U = U_CASTSPEL then U := UNWNONE;              { stops here }
+      Result := U
     end;  { CASTSPEL }
 
 
-    { ── USEITEM ── }
-    procedure USEITEM;
+    function USEITEM: Byte;
     var
       THEITEM : TOBJREC;
       ITEMX   : SmallInt;
       PP      : ^TPOSSESS;
       SPTR    : ^TSPELBLK;
     begin
+      Result   := UNWNONE;
       DISPSTAT := false;
       repeat
-        GotoXY( 1, 19);
-        WriteLn;  { AP: WRITE(CHR(11)) }
+        GotoXY( 0, 18);
+        Write( Chr( 11));
         Write( 'USE ITEM (0=EXIT) ? >');
         GETKEY;
         WriteLn;
@@ -488,19 +473,19 @@ var
       PP := TC.POSS.POSSESS[ ITEMX];
       LOADOBJREC( PP.EQINDEX, THEITEM);
       if THEITEM.SPELLPWR = 0 then
-        begin AASTRAA( 'POWERLESS'); exit end;
+        begin AASTRAA( 'POWERLESS'); exit end;          { EXITUSE }
       if Byte( THEITEM.OBJTYPE) <> Byte( SPECIAL) then
         if not PP.EQUIPED then
           begin AASTRAA( 'NOT EQUIPPED'); exit end;
       if Random( 100) < THEITEM.CHGCHANC then
         PP.EQINDEX := THEITEM.CHANGETO;
       SPTR := SCNTOC.SPELLS;
-      CASTSPEL( SPTR.SPELLHSH[ THEITEM.SPELLPWR]);
-      if _done then exit
+      Result := CASTSPEL( SPTR.SPELLHSH[ THEITEM.SPELLPWR]);
+      if Result <> UNWNONE then exit;
+      DSPITEMS                                          { v3.2 WC017 }
     end;
 
 
-    { ── DROPITEM ── }
     procedure DROPITEM;
     var
       POSSX : SmallInt;
@@ -510,8 +495,8 @@ var
     begin
       DISPSTAT := false;
       repeat
-        GotoXY( 1, 19);
-        WriteLn;  { AP: WRITE(CHR(11)) }
+        GotoXY( 0, 18);
+        Write( Chr( 11));
         Write( 'DROP ITEM (0=EXIT) ? >');
         GETKEY;
         POSSI := Ord( INCHAR) - Ord( '0');
@@ -520,9 +505,9 @@ var
       until (POSSI > 0) and (POSSI <= TC.POSS.POSSCNT);
       TC := CHARACTR[ CAMPCHAR];
       PP := TC.POSS.POSSESS[ POSSI];
-      if PP.CURSED  then begin AASTRAA( 'CURSED');   exit end;
+      if PP.CURSED  then begin AASTRAA( 'CURSED');   exit end;     { EXITDROP }
       if PP.EQUIPED then begin AASTRAA( 'EQUIPPED'); exit end;
-      for POSSX := POSSI + 1 to TC.POSS.POSSCNT do
+      for POSSX := POSSI + 1 to TC^.POSS.POSSCNT do
         begin
           PP  := TC.POSS.POSSESS[ POSSX - 1];
           PP2 := TC.POSS.POSSESS[ POSSX];
@@ -534,42 +519,48 @@ var
     end;
 
 
-    { ── IDENTIFY_PROC ── }
-    procedure IDENTIFY_PROC;
+    function IDENTIFY: Byte;
     begin
+      IDENTIFY := UNWNONE;
       DISPSTAT := false;
       TC := CHARACTR[ CAMPCHAR];
-      if Byte( TC.XCLASS) <> Byte( BISHOP) then
-        begin AASTRAA( 'NOT BISHOP'); exit end;
+      if Byte( TC^.XCLASS) <> Byte( BISHOP) then
+        begin AASTRAA( 'NOT BISHOP'); exit end;         { EXITIDNT }
       LLBASE04 := CAMPCHAR;
       XGOTO2   := XTRAININ;
       XGOTO    := XCAMPSTF;
-      _done    := true          { AP: EXIT(CAMP) }
+      IDENTIFY := U_CAMP                                { EXIT( CAMP) }
     end;
 
 
-    { ── DOTRADE ── }
     procedure DOTRADE;
     var
-      GOLD2TRA    : TWIZLONG;
-      TRADETO     : SmallInt;
-      GOLDSTR     : string[ 40];
-      GOLDX       : SmallInt;
-      TEMP0001    : SmallInt;
-      ITEMX       : SmallInt;
-      TC_TO       : PTCHAR;
-      PP          : ^TPOSSESS;
-      PP2         : ^TPOSSESS;
-      _exittrade  : Boolean;
+      GOLD2TRA : TWIZLONG;
+      TRADETO  : SmallInt;
+      GOLDSTR  : string[ 40];
+      GOLDX    : SmallInt;
+      TEMP0001 : SmallInt;
+      ITEMX    : SmallInt;
+      TC_TO    : PTCHAR;
+      PP       : ^TPOSSESS;
+      PP2      : ^TPOSSESS;
 
 
-      procedure TRADGOLD;
+      function EXITTRAD(EXITSTR: string): Byte;
+      begin
+        AASTRAA( EXITSTR);
+        EXITTRAD := U_DOTRADE                           { EXIT( DOTRADE) }
+      end;
+
+
+      function TRADGOLD: Byte;
       var
         TEMPGOLD : TWIZLONG;
         MULT10   : SmallInt;
       begin
-        GotoXY( 1, 19);
-        WriteLn;  { AP: WRITE(CHR(11)) }
+        TRADGOLD := UNWNONE;
+        GotoXY( 0, 18);
+        Write( Chr( 11));
         Write( 'AMT OF GOLD ? >');
         GETLINE;
         GOLDSTR := GTSTRING;
@@ -590,10 +581,10 @@ var
               ADDLONGS( GOLD2TRA, TEMPGOLD)
             end;
         if TEMP0001 = -1 then
-          begin AASTRAA( 'BAD AMT'); _exittrade := true; exit end;
+          exit( EXITTRAD( 'BAD AMOUNT'));               { v3.2 WC026 }
         TC := CHARACTR[ CAMPCHAR];
         if TESTLONG( TC.GOLD, GOLD2TRA) < 0 then
-          begin AASTRAA( 'NOT ENOUGH $'); _exittrade := true; exit end;
+          exit( EXITTRAD( 'NOT ENOUGH $'));
         TC_TO := CHARACTR[ TRADETO];
         ADDLONGS( TC_TO.GOLD, GOLD2TRA);
         TC := CHARACTR[ CAMPCHAR];
@@ -602,30 +593,29 @@ var
 
 
       procedure TRADITEM;
+      { Every way out of it is AP EXIT( DOTRADE), its caller's last call. }
       begin
         repeat
           repeat
-            GotoXY( 1, 19);
-            WriteLn;  { AP: WRITE(CHR(11)) }
+            GotoXY( 0, 18);
+            Write( Chr( 11));
             Write( 'WHAT ITEM ([RET] EXITS) ? >');
             GETKEY;
             ITEMX := Ord( INCHAR) - Ord( '0');
-            if INCHAR = Chr( CRETURN) then
-              begin _exittrade := true; exit end   { AP: EXIT(DOTRADE) }
+            if INCHAR = Chr( CRETURN) then exit         { EXIT( DOTRADE) }
           until (ITEMX > 0) and (ITEMX <= CHARACTR[ CAMPCHAR].POSS.POSSCNT);
-          if _exittrade then exit;
           TC_TO := CHARACTR[ TRADETO];
           TC    := CHARACTR[ CAMPCHAR];
           if TC_TO.POSS.POSSCNT = 8 then
-            begin AASTRAA( 'FULL'); _exittrade := true; exit end;
+            begin AASTRAA( 'FULL'); exit end;
           PP := TC.POSS.POSSESS[ ITEMX];
-          if PP.CURSED  then begin AASTRAA( 'CURSED');   _exittrade := true; exit end;
-          if PP.EQUIPED then begin AASTRAA( 'EQUIPPED');  _exittrade := true; exit end;
+          if PP.CURSED  then begin AASTRAA( 'CURSED');   exit end;
+          if PP.EQUIPED then begin AASTRAA( 'EQUIPPED'); exit end;
           TEMP0001 := TC_TO.POSS.POSSCNT + 1;
           PP2  := TC_TO.POSS.POSSESS[ TEMP0001];
           PP2^ := PP^;
           TC_TO.POSS.POSSCNT := TEMP0001;
-          for TEMP0001 := ITEMX + 1 to TC.POSS.POSSCNT do
+          for TEMP0001 := ITEMX + 1 to TC^.POSS.POSSCNT do
             begin
               PP  := TC.POSS.POSSESS[ TEMP0001 - 1];
               PP2 := TC.POSS.POSSESS[ TEMP0001];
@@ -638,21 +628,46 @@ var
 
 
     begin  { DOTRADE }
-      _exittrade := false;
-      DISPSTAT   := false;
+      DISPSTAT := false;
       repeat
         TRADETO := GETCHARX( true, 'TRADE WITH');
         if TRADETO = -1 then exit
       until TRADETO <> CAMPCHAR;
-      TRADGOLD;
-      if _exittrade then exit;
+      if TRADGOLD = U_DOTRADE then exit;
+      DSPSPELS;                                         { v3.2 WC038: gold }
       TRADITEM
     end;  { DOTRADE }
 
 
-    { ── CAMPDO ── }
-    procedure CAMPDO;
+    procedure DIVALLG( CHAR4GLD: SmallInt);
+    { v3.2 WC040: pool the party's gold, then share it out evenly. }
+    var
+      ALOOP4   : SmallInt;
+      GOLD2DIV : TWIZLONG;
+      GOLDLESS : TWIZLONG;
+      TG, TC2  : PTCHAR;
+    begin
+      POOLALLG( CHAR4GLD);
+      TG := CHARACTR[ CHAR4GLD];
+      GOLD2DIV.XLOW  := TG.GOLD.XLOW;                   { record copies by field }
+      GOLD2DIV.XMID  := TG.GOLD.XMID;
+      GOLD2DIV.XHIGH := TG.GOLD.XHIGH;
+      DIVLONG( GOLD2DIV, PARTYCNT);
+      GOLDLESS.XLOW  := GOLD2DIV.XLOW;
+      GOLDLESS.XMID  := GOLD2DIV.XMID;
+      GOLDLESS.XHIGH := GOLD2DIV.XHIGH;
+      MULTLONG( GOLDLESS, PARTYCNT);
+      SUBLONGS( TG.GOLD, GOLDLESS);
+      for ALOOP4 := 0 to PARTYCNT - 1 do
+        begin
+          TC2 := CHARACTR[ ALOOP4];
+          ADDLONGS( TC2.GOLD, GOLD2DIV)
+        end
+    end;
 
+
+    { ── CAMPDO: UNWNONE or U_CAMP ── }
+    function CAMPDO: Byte;
     var
       MENUTYPE : SmallInt;
       TC2      : PTCHAR;
@@ -682,46 +697,46 @@ var
           Write( TC.NAME);
           Write( ' ');
           if TC.LOSTXYL[ 4] > 0 then CHEVRONS;
-          Write( SCNTOC_RACE[ Byte( TC.RACE)]);
+          Write( RACENAME( Byte( TC^.RACE)));
           Write( ' ');
-          Write( Copy( SCNTOC_ALIGN[ Byte( TC.ALIGN)], 1, 1));
+          Write( LEFTSTR( ALIGNNAME( Byte( TC^.ALIGN)), 1));
           Write( '-');
-          Write( SCNTOC_CLASS[ Byte( TC.XCLASS)]);
+          Write( CLASSNAME( Byte( TC^.XCLASS)));
           WriteLn;
           WriteLn;
-          Write( 'STRENGTH' : 12);
-          Write( TC.ATTRIB[ STRENGTH] : 3);
-          Write( 'GOLD ' : 9);
+          Write( '    STRENGTH');
+          WRITEINT( TC.ATTRIB[ STRENGTH], 3);
+          Write( '    GOLD ');
           PRNTLONG( TC.GOLD);
           WriteLn;
-          Write( 'I.Q.' : 12);
-          Write( TC.ATTRIB[ IQ] : 3);
-          Write( 'EXP ' : 9);
+          Write( '        I.Q.');
+          WRITEINT( TC.ATTRIB[ IQ], 3);
+          Write( '     EXP ');
           PRNTLONG( TC.EXP);
           WriteLn;
-          Write( 'PIETY' : 12);
-          Write( TC.ATTRIB[ PIETY] : 3);
+          Write( '       PIETY');
+          WRITEINT( TC.ATTRIB[ PIETY], 3);
           WriteLn;
-          Write( 'VITALITY' : 12);
-          Write( TC.ATTRIB[ VITALITY] : 3);
-          Write( 'LEVEL ' : 9);
-          Write( TC.CHARLEV : 3);
-          Write( 'AGE ' : 9);
-          Write( (TC.AGE div 52) : 3);
+          Write( '    VITALITY');
+          WRITEINT( TC.ATTRIB[ VITALITY], 3);
+          Write( '   LEVEL ');
+          WRITEINT( TC.CHARLEV, 3);
+          Write( '     AGE ');
+          WRITEINT( (TC.AGE div 52), 3);
           WriteLn;
-          Write( 'AGILITY' : 12);
-          Write( TC.ATTRIB[ AGILITY] : 3);
-          Write( 'HITS ' : 9);
-          Write( TC.HPLEFT : 3);
+          Write( '     AGILITY');
+          WRITEINT( TC.ATTRIB[ AGILITY], 3);
+          Write( '    HITS ');
+          WRITEINT( TC.HPLEFT, 3);
           Write( '/');
-          Write( TC.HPMAX : 3);
-          Write( 'AC' : 4);
-          Write( (TC.ARMORCL - ACMOD2) : 4);
+          WRITEINT( TC.HPMAX, 3);
+          Write( '  AC');
+          WRITEINT( (TC.ARMORCL - ACMOD2), 4);
           WriteLn;
-          Write( 'LUCK' : 12);
-          Write( TC.ATTRIB[ LUCK] : 3);
-          Write( 'STATUS ' : 9);
-          Write( SCNTOC_STATUS[ Byte( TC.STATUS)]);
+          Write( '        LUCK');
+          WRITEINT( TC.ATTRIB[ LUCK], 3);
+          Write( '  STATUS ');
+          Write( STATNAME( Byte( TC^.STATUS)));
           if TC.LOSTXYL[ 1] > 0 then Write( ' & POISONED');
           WriteLn;
           DSPSPELS;
@@ -729,45 +744,59 @@ var
         end;  { DSPSTATS }
 
 
+        procedure MENULST4;                             { v3.2 WC040 }
+        begin
+          Write( Chr( 11));
+          WriteLn( 'YOU MAY E)QUIP, D)ROP AN ITEM, T)RADE,');
+          Write( '        ');
+          WriteLn( 'POOL G)OLD, DIV)IDE GOLD,');
+          Write( '        ')
+        end;
+
+
+        procedure MENULST5;                             { v3.2 WC040 }
+        begin
+          WriteLn( 'R)EAD SPELL BOOKS, OR L)EAVE.')
+        end;
+
+
       begin  { CAMPMENU }
         TC2 := CHARACTR[ CAMPCHAR];
         if DISPSTAT then DSPSTATS;
-        GotoXY( 1, 19);
+        GotoXY( 0, 18);
         if XGOTO = XINSPCT3 then
           MENUTYPE := 0
         else if XGOTO = XINSPECT then
           MENUTYPE := 1
-        else if Byte( TC2.STATUS) = 0 then  { OK = 0 }
+        else if Byte( TC2^.STATUS) = 0 then              { OK = 0 }
           MENUTYPE := 2
         else
           MENUTYPE := 1;
         if MENUTYPE = 2 then
           begin
-            WriteLn;
-            WriteLn( 'YOU MAY E)QUIP, D)ROP AN ITEM, T)RADE,');
-            Write( ' ' : 8);
-            WriteLn( 'R)EAD SPELL BOOKS, CAST S)PELLS,');
-            Write( ' ' : 8);
+            MENULST4;
             WriteLn( 'U)SE AN ITEM, I)DENTIFY AN ITEM,');
-            Write( ' ' : 8);
-            WriteLn( 'OR L)EAVE.')
+            Write( '        ');
+            WriteLn( 'CAST S)PELLS,');
+            Write( '        ');
+            MENULST5
           end
         else if MENUTYPE = 1 then
           begin
-            WriteLn;
-            WriteLn( 'YOU MAY E)QUIP, D)ROP AN ITEM, T)RADE,');
-            Write( ' ' : 8);
-            WriteLn( 'R)EAD SPELL BOOKS, OR L)EAVE.')
+            MENULST4;
+            MENULST5
           end
         else
           begin
-            WriteLn;
-            WriteLn( 'YOU MAY R)EAD SPELL BOOKS OR L)EAVE.')
+            Write( Chr( 11));
+            Write( 'YOU MAY ');
+            MENULST5
           end
       end;  { CAMPMENU }
 
 
     begin  { CAMPDO }
+      Result := UNWNONE;
       CAMPMENU;
       DISPSTAT := true;
       repeat
@@ -775,41 +804,42 @@ var
         GETKEY
       until (INCHAR = 'R') or (INCHAR = 'L') or
             ((MENUTYPE > 0) and
-             ((INCHAR = 'T') or (INCHAR = 'D') or (INCHAR = 'E'))) or
+             ((INCHAR = 'T') or (INCHAR = 'D') or (INCHAR = 'E') or
+              (INCHAR = 'G') or (INCHAR = 'V'))) or
             ((MENUTYPE > 1) and
              ((INCHAR = 'I') or (INCHAR = 'S') or (INCHAR = 'U')));
       case INCHAR of
-        'L':  exit;   { AP: EXIT(CAMPDO) — returns to INSPECT's repeat loop }
+        'L':  exit;                                     { EXIT( CAMPDO) }
         'E':  if MENUTYPE > 0 then
                 begin
                   XGOTO    := XEQPDSP;
                   LLBASE04 := CAMPCHAR;
-                  _done    := true;
-                  exit
+                  exit( U_CAMP)                         { EXIT( CAMP) }
                 end;
         'R':  begin
                 XGOTO    := XCAMPSTF;
                 XGOTO2   := XDONE;
                 LLBASE04 := CAMPCHAR;
-                _done    := true;
-                exit
+                exit( U_CAMP)                           { EXIT( CAMP) }
               end;
-        'D':  if MENUTYPE > 0 then begin DROPITEM;      if _done then exit end;
-        'I':  if MENUTYPE = 2 then begin IDENTIFY_PROC; if _done then exit end;
-        'S':  if MENUTYPE = 2 then begin CASTSPEL( -1); if _done then exit end;
-        'U':  if MENUTYPE = 2 then begin USEITEM;       if _done then exit end;
+        'D':  if MENUTYPE > 0 then DROPITEM;
+        'G':  if MENUTYPE > 0 then POOLALLG( CAMPCHAR); { v3.2 WC040 }
+        'V':  if MENUTYPE > 0 then DIVALLG( CAMPCHAR);  { v3.2 WC040 }
+        'I':  if MENUTYPE = 2 then Result := IDENTIFY;
+        'S':  if MENUTYPE = 2 then Result := CASTSPEL( -1);
+        'U':  if MENUTYPE = 2 then Result := USEITEM;
         'T':  DOTRADE
       end
     end;  { CAMPDO }
 
 
   begin  { INSPECT }
+    Result   := UNWNONE;
     CAMPCHAR := LLBASE04;
     XGOTO2   := XGOTO;
     ClrScr;
     repeat
-      CAMPDO;
-      if _done then exit
+      if CAMPDO = U_CAMP then exit( U_CAMP)
     until INCHAR = 'L';
     ClrScr
   end;  { INSPECT }
@@ -823,73 +853,74 @@ var
 
     procedure DSP1LINE(CHARX: SmallInt);
     begin
-      GotoXY( 1, 4 + CHARX);
-      Write( ' ');   { AP: WRITE(CHR(29)) — clear to EOL; approximate }
-      Write( (CHARX + 1) : 2);
+      GotoXY( 0, 3 + CHARX);
+      Write( Chr( 29));
+      WRITEINT( (CHARX + 1), 2);
       Write( ' ');
       TC2 := CHARACTR[ CHARX];
       Write( TC2.NAME);
-      GotoXY( 20, 4 + CHARX);
-      Write( Copy( SCNTOC_ALIGN[ Byte( TC2.ALIGN)], 1, 1));
+      GotoXY( 19, 3 + CHARX);
+      Write( LEFTSTR( ALIGNNAME( Byte( TC2^.ALIGN)), 1));
       Write( '-');
-      Write( Copy( SCNTOC_CLASS[ Byte( TC2.XCLASS)], 1, 3));
+      Write( LEFTSTR( CLASSNAME( Byte( TC2^.XCLASS)), 3));
       Write( ' ');
       if TC2.ARMORCL - ACMOD2 > -10 then
-        Write( (TC2.ARMORCL - ACMOD2) : 2)
+        WRITEINT( (TC2.ARMORCL - ACMOD2), 2)
       else
         Write( 'LO');
-      Write( TC2.HPLEFT : 5);
+      WRITEINT( TC2.HPLEFT, 5);
       LLBASE04 := TC2.HEALPTS - TC2.LOSTXYL[ 1];
       if LLBASE04 > 0 then Write( '+')
       else if LLBASE04 < 0 then Write( '-')
       else Write( ' ');
-      if Byte( TC2.STATUS) = 0 then  { OK = 0 }
+      if Byte( TC2^.STATUS) = 0 then                     { OK = 0 }
         if TC2.LOSTXYL[ 1] <> 0 then
           WriteLn( 'POISON')
         else
-          WriteLn( TC2.HPMAX : 4)
+          begin WRITEINT( TC2.HPMAX, 4); WriteLn end
       else
-        WriteLn( SCNTOC_STATUS[ Byte( TC2.STATUS)])
+        WriteLn( STATNAME( Byte( TC2^.STATUS)))
     end;  { DSP1LINE }
 
   begin  { CAMPMEN2 }
     ClrScr;
-    WriteLn( 'CAMP' : 22);
+    WriteLn( '                  CAMP');
     WriteLn;
     WriteLn( ' # CHARACTER NAME  CLASS AC HITS STATUS');
     for CHARX := 0 to PARTYCNT - 1 do
       DSP1LINE( CHARX);
-    GotoXY( 1, 13);
+    GotoXY( 0, 12);
     WriteLn( 'YOU MAY R)EORDER, E)QUIP, D)ISBAND,');
-    Write( ' ' : 8);
+    Write( '        ');
     WriteLn( '#) TO INSPECT, OR');
-    Write( ' ' : 8);
+    Write( '        ');
     WriteLn( 'L)EAVE THE CAMP.')
   end;  { CAMPMEN2 }
 
 
-  { ── DISBAND ── }
-  procedure DISBAND;
+  { ── DISBAND: UNWNONE (not confirmed) or U_CAMP ── }
+  function DISBAND: Byte;
   var
-    _exitdisband : Boolean;
-    TC2          : PTCHAR;
+    TC2 : PTCHAR;
 
-    procedure CONFIRM(NULLRE: string);
+    function CONFIRM(NULLRE: string): Byte;
     begin
+      CONFIRM := UNWNONE;
       ClrScr;
       Write( NULLRE);
       Write( 'CONFIRM (Y/N) ?');
       repeat
         GotoXY( 41, 0);
-        GETKEY
+        GETKEY                                          { AP: READ( INCHAR) }
       until (INCHAR = 'Y') or (INCHAR = 'N');
-      if INCHAR = 'N' then _exitdisband := true
+      if INCHAR = 'N' then
+        CONFIRM := U_DISBAND                            { EXIT( DISBAND) }
     end;
 
   begin  { DISBAND }
-    _exitdisband := false;
-    CONFIRM( '');   if _exitdisband then exit;
-    CONFIRM( 'RE-'); if _exitdisband then exit;
+    Result := UNWNONE;
+    if CONFIRM( '')    = U_DISBAND then exit;
+    if CONFIRM( 'RE-') = U_DISBAND then exit;
     for LLBASE04 := 0 to PARTYCNT - 1 do
       begin
         TC2 := CHARACTR[ LLBASE04];
@@ -903,12 +934,11 @@ var
     GTSCNTOC;
     LLBASE04 := -2;
     XGOTO    := XSCNMSG;
-    _done    := true          { AP: EXIT(CAMP) }
+    Result   := U_CAMP                                  { EXIT( CAMP) }
   end;  { DISBAND }
 
 
 begin  { CAMP }
-  _done    := false;
   DISPSTAT := true;
   for OBJI := 1 to 8 do
     OBJIDS[ OBJI - 1] := -1;
@@ -916,25 +946,24 @@ begin  { CAMP }
   if (XGOTO = XBCK2CMP) or (XGOTO = XBK2CMP2) then
     begin
       XGOTO := XGOTO2;
-      if XGOTO = XINSPCT2 then begin INSPECT; if _done then exit end
+      if XGOTO = XINSPCT2 then
+        if INSPECT = U_CAMP then exit
     end;
   if XGOTO = XINSPECT then
     begin
-      INSPECT;
-      if _done then exit;
+      if INSPECT = U_CAMP then exit;
       XGOTO := XGILGAMS;
       exit
     end;
   if XGOTO = XINSPCT3 then
     begin
       LLBASE04 := 0;
-      INSPECT;
-      if _done then exit;
+      if INSPECT = U_CAMP then exit;
       XGOTO := XBCK2ROL;
       exit
     end;
   repeat
-    CLEARPIC;
+    UNITCLEAR( 1);
     CAMPMEN2;
     GotoXY( 41, 0);
     GETKEY;
@@ -943,27 +972,24 @@ begin  { CAMP }
         LLBASE04 := Ord( INCHAR) - Ord( '1');
         for OBJI := 1 to 8 do
           OBJIDS[ OBJI - 1] := -1;
-        INSPECT;
-        if _done then exit
+        if INSPECT = U_CAMP then exit
       end
     else
-      begin
-        case INCHAR of
-          'R':  begin
-                  XGOTO := XREORDER;
-                  exit
-                end;
-          'L':  begin
-                  XGOTO := XCMP2EQ6;
-                  exit
-                end;
-          'E':  begin
-                  XGOTO    := XEQPDSP;
-                  LLBASE04 := -1;
-                  exit
-                end;
-          'D':  begin DISBAND; if _done then exit end
-        end
+      case INCHAR of
+        'R':  begin
+                XGOTO := XREORDER;
+                exit
+              end;
+        'L':  begin
+                XGOTO := XCMP2EQ6;
+                exit
+              end;
+        'E':  begin
+                XGOTO    := XEQPDSP;
+                LLBASE04 := -1;
+                exit
+              end;
+        'D':  if DISBAND = U_CAMP then exit
       end
   until false
 end;  { CAMP }

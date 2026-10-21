@@ -1,14 +1,11 @@
 unit ROLLERUNIT;
 
-{ Source: apple/wiz1c/ROLLER
+{ Source: apple/Wizardry_v3-2/Wiz1C.DSK/ROLLER (v3.2: no passwords, WC019)
 
   Translation notes:
     - SEGMENT PROCEDURE ROLLER -> unit procedure ROLLER
-    - EXIT(ROLLER)        -> _done := true; break (main loop) or exit
-    - EXIT(MAKECHAR)      -> _exitmakechar := true; exit
-    - EXIT(CREATE)        -> _exitcreate := true; exit
-    - EXIT(TRAINING)      -> exit (from within TRAINING) or _exittraining flag
-    - EXIT(DELCHAR/etc.)  -> exit (from within that procedure)
+    - EXIT(ROLLER/MAKECHAR/CREATE/TRAINING) past the current routine ->
+      unwind codes U_* (CONSTS); EXIT of the current routine -> exit
     - GETCHARC/PUTCHARC   -> LOADTCHAR/SAVETCHAR
     - CHARACTR[0] := CHARREC -> CHARACTR[0]^ := CHARREC (CHARACTR holds ^TCHAR)
     - CHARREC := CHARACTR[0] -> CHARREC := CHARACTR[0]^
@@ -19,11 +16,7 @@ unit ROLLERUNIT;
     - SCNTOC.RACE/CLASS/ALIGN/STATUS -> SCNTOC_RACE/CLASS/ALIGN/STATUS globals
     - CHARREC.SPELLSKN[I]  -> SKN^[I] via local PTSPELLSKN variable
     - CHARREC.POSS.POSSESS[I].FIELD -> PP := CHARREC.POSS.POSSESS[I]; PP.FIELD
-    - WRITE(CHR(12)) -> ClrScr
-    - GOTOXY(x,y)    -> GotoXY(x+1, y+1)  (CRT is 1-based)
-    - GOTOXY(41,0)   -> (no-op: off-screen position used to suppress key echo)
-    - CHR(11)        -> cursor-down approximated / no-op
-    - CHR(29)        -> no-op
+    - WRITE(CHR(12)) -> ClrScr; GOTOXY, CHR(11), CHR(29) as AP (SCREEN)
     - GETLINE(VAR S) -> GETLINE; S := GTSTRING
     - RANDOM MOD N   -> Random(N)
     - CHG2LST array[FIGHTER..NINJA] -> indexed by Byte(TCLASS)
@@ -33,7 +26,7 @@ unit ROLLERUNIT;
 
 interface
 
-uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+uses TYPES, CONSTS, GLOBALS, UTIL, SCREEN;
 
 procedure ROLLER;
 
@@ -42,10 +35,10 @@ implementation
 { Unit-level helpers for enum assignment (bug4: nested proc/case re-types
   non-zero enum constants as Byte; typed parameter restores correct type). }
 { Access enum fields of TCHAR via PTCHAR pointer (avoids nested-scope type loss). }
-procedure SETALIGN_RL( TC: PTCHAR; V: TALIGN);  begin TC.ALIGN  := TALIGN( Byte(V)) end;
-procedure SETSTATUS_RL(TC: PTCHAR; V: TSTATUS); begin TC.STATUS := TSTATUS(Byte(V)) end;
-procedure SETRACE_RL(  TC: PTCHAR; V: TRACE);   begin TC.RACE   := TRACE(  Byte(V)) end;
-procedure SETCLASS_RL( TC: PTCHAR; V: TCLASS);  begin TC.XCLASS := TCLASS( Byte(V)) end;
+procedure SETALIGN_RL( TC: PTCHAR; V: TALIGN);  begin TC^.ALIGN  := TALIGN( Byte(V)) end;
+procedure SETSTATUS_RL(TC: PTCHAR; V: TSTATUS); begin TC^.STATUS := TSTATUS(Byte(V)) end;
+procedure SETRACE_RL(  TC: PTCHAR; V: TRACE);   begin TC^.RACE   := TRACE(  Byte(V)) end;
+procedure SETCLASS_RL( TC: PTCHAR; V: TCLASS);  begin TC^.XCLASS := TCLASS( Byte(V)) end;
 
 { MP comparison operators return BYTE, not Boolean; this bridges the gap. }
 function BSET(B: Byte): Boolean;
@@ -59,6 +52,12 @@ end;
   ══════════════════════════════════════════════════════════════════════════════ }
 
 procedure ROLLER;
+
+const
+  U_ROLLER   = $01;       { unwind targets: AP P010B01, P010B09, P010B13, }
+  U_MAKECHAR = $09;       {   P010B16                                     }
+  U_CREATE   = $13;
+  U_TRAINING = $16;
 
 var
   CHARREC  : TCHAR;
@@ -74,32 +73,6 @@ var
   CHG2LST  : array[ FIGHTER..NINJA]   of Boolean;
   BASEATTR : array[ STRENGTH..LUCK]   of SmallInt;
   SIXATTR2 : array[ STRENGTH..LUCK]   of SmallInt;
-  _done    : Boolean;   { EXIT(ROLLER) from nested procs }
-
-
-  { ── GETPASS ── }
-  procedure GETPASS( var PASSWORD: string);
-  var
-    RANDX  : SmallInt;
-    CHRCNT : SmallInt;
-  begin
-    CHRCNT := 0;
-    repeat
-      GETKEY;
-      if INCHAR <> Chr( CRETURN) then
-        if CHRCNT < 15 then
-          begin
-            for RANDX := 0 to Random( 2) do
-              Write( 'X');
-            CHRCNT              := CHRCNT + 1;
-            PASSWORD[ CHRCNT]   := INCHAR
-          end
-        else
-          Write( Chr( 7))
-    until INCHAR = Chr( CRETURN);
-    WriteLn;
-    PASSWORD[ 0] := Chr( CHRCNT)
-  end;
 
 
   { ── GTCHGLST ── }
@@ -134,12 +107,13 @@ var
                          (SIXATTR2[ LUCK] >= 15) and
                          (CHARREC.ALIGN = GOOD));
 
-    CHG2LST[ NINJA]   := BSET((SIXATTR2[ STRENGTH] >= 17) and
-                         (SIXATTR2[ IQ] >= 17) and
-                         (SIXATTR2[ PIETY] >= 17) and
-                         (SIXATTR2[ VITALITY] >= 17) and
-                         (SIXATTR2[ AGILITY] >= 17) and
-                         (SIXATTR2[ LUCK] >= 17) and
+    CHG2LST[ NINJA]   := BSET(               { v3.2 WC030: 15, not 17 }
+                         (SIXATTR2[ STRENGTH] >= 15) and
+                         (SIXATTR2[ IQ] >= 15) and
+                         (SIXATTR2[ PIETY] >= 15) and
+                         (SIXATTR2[ VITALITY] >= 15) and
+                         (SIXATTR2[ AGILITY] >= 15) and
+                         (SIXATTR2[ LUCK] >= 15) and
                          (CHARREC.ALIGN = EVIL));
 
     GTCHGLST := CHG2LST[ FIGHTER] or CHG2LST[ MAGE]    or
@@ -187,8 +161,6 @@ var
 
   { ── MAKECHAR ── }
   procedure MAKECHAR;
-  var
-    _exitmakechar : Boolean;
 
 
     { ── INITCHAR ── }
@@ -209,41 +181,40 @@ var
     end;
 
 
+    procedure P010B0B;
+    begin
+      GotoXY( 0, 15);
+      Write( Chr( 11))
+    end;
+
+
+    procedure P010B0C;
+    begin
+      GotoXY( 0, 15);
+      Write( Chr( 29))
+    end;
+
+
     { ── MAKEMENU ── }
     procedure MAKEMENU;
-    var
-      PASSWD : string[ 15];
     begin
       ClrScr;
-      Write(   'NAME':10);
+      Write( '     NAME ');
       WriteLn( CHARREC.NAME);
-      WriteLn( 'PASSWORD':9);
-      WriteLn( 'RACE':9);
-      WriteLn( 'POINTS':9);
+      WriteLn( '         ');
+      WriteLn( '     RACE');
+      WriteLn( '   POINTS');
       WriteLn;
-      WriteLn( 'STRENGTH':9);
-      WriteLn( 'I.Q.':9);
-      WriteLn( 'PIETY':9);
-      WriteLn( 'VITALITY':9);
-      WriteLn( 'AGILITY':9);
-      WriteLn( 'LUCK':9);
+      WriteLn( ' STRENGTH');
+      WriteLn( '     I.Q.');
+      WriteLn( '    PIETY');
+      WriteLn( ' VITALITY');
+      WriteLn( '  AGILITY');
+      WriteLn( '     LUCK');
       WriteLn;
       WriteLn( 'ALIGNMENT');
-      WriteLn( 'CLASS':9);
-      WriteLn;
-      repeat
-        GotoXY( 1, 16);
-        WriteLn( 'ENTER A PASSWORD ([RET] FOR NONE)');
-        GotoXY( 11, 2);
-        GETPASS( CHARNAME);
-        if Length( CHARNAME) > 15 then
-          CHARNAME := Copy( CHARNAME, 1, 15);
-        GotoXY( 1, 16);
-        WriteLn( 'ENTER IT AGAIN TO BE SURE');
-        GotoXY( 11, 2);
-        GETPASS( PASSWD);
-      until PASSWD = CHARNAME;
-      CHARREC.PASSWORD := CHARNAME
+      WriteLn( '    CLASS');
+      WriteLn
     end;
 
 
@@ -252,27 +223,27 @@ var
     var
       RACEI : TRACE;
     begin
-      GotoXY( 1, 16);
-      GotoXY( 1, 18);
+      P010B0B;
+      GotoXY( 0, 17);
       for RACEI := HUMAN to HOBBIT do
         begin
           Write( Chr( Ord( '@') + Byte( RACEI)));
           Write( ') ');
-          WriteLn( SCNTOC_RACE[ Byte( RACEI)])
+          WriteLn( RACENAME( Byte( RACEI)))
         end;
       repeat
-        GotoXY( 1, 16);
+        P010B0C;
         Write( 'CHOOSE A RACE >');
         GETKEY
       until (INCHAR >= 'A') and (INCHAR <= 'E');
-      GotoXY( 11, 3);
+      GotoXY( 10, 2);
       SETRACE_RL( @CHARREC, HUMAN);
       while INCHAR > 'A' do
         begin
           INCHAR := PRED( INCHAR);
           CHARREC.RACE := SUCC( CHARREC.RACE)
         end;
-      Write( SCNTOC_RACE[ Byte( CHARREC.RACE)]);
+      Write( RACENAME( Byte( CHARREC.RACE)));
       SETBASE
     end;
 
@@ -286,7 +257,8 @@ var
 
       procedure PTSMENU;
       begin
-        GotoXY( 1, 16);
+        GotoXY( 0, 15);
+        Write( Chr( 11));
         WriteLn( 'ENTER [+,-] TO ALTER A SCORE,');
         WriteLn( '      [RET] TO GO TO NEXT SCORE,');
         WriteLn( '      [ESC] TO GO ON WHEN POINTS USED UP');
@@ -296,8 +268,8 @@ var
         SIXATTR2 := BASEATTR;
         for ATTRIBX := STRENGTH to LUCK do
           begin
-            GotoXY( 11, 6 + Byte( ATTRIBX));
-            Write( SIXATTR2[ ATTRIBX]:2)
+            GotoXY( 10, 5 + Byte( ATTRIBX));
+            WRITEINT( SIXATTR2[ ATTRIBX], 2)
           end;
         ATTRIBX := STRENGTH;
         CANCHG  := false
@@ -306,11 +278,12 @@ var
     begin  { GIVEPTS }
       PTSMENU;
       repeat
-        GotoXY( 14, 6 + Byte( ATTRIBX));
+        GotoXY( 13, 5 + Byte( ATTRIBX));
         Write( '<--');
         repeat
-          GotoXY( 11, 4);
-          Write( PTSLEFT:2);
+          GotoXY( 10, 3);
+          WRITEINT( PTSLEFT, 2);
+          GotoXY( 41, 0);
           GETKEY;
           if ((INCHAR = '+') or (INCHAR = ';')) and
              (SIXATTR2[ ATTRIBX] < 18) and
@@ -331,26 +304,26 @@ var
           if (INCHAR = '+') or (INCHAR = '-') or
              (INCHAR = ';') or (INCHAR = '=') then
             begin
-              GotoXY( 11, 6 + Byte( ATTRIBX));
-              Write( SIXATTR2[ ATTRIBX]:2);
+              GotoXY( 10, 5 + Byte( ATTRIBX));
+              WRITEINT( SIXATTR2[ ATTRIBX], 2);
               CANCHG := GTCHGLST;
               for CLASSX := FIGHTER to NINJA do
                 begin
-                  GotoXY( 21, 6 + Byte( CLASSX));
+                  GotoXY( 20, 5 + Byte( CLASSX));
                   if CHG2LST[ CLASSX] then
                     begin
                       Write( Chr( Ord( 'A') + Byte( CLASSX)));
                       Write( ') ');
-                      Write( SCNTOC_CLASS[ Byte( CLASSX)])
+                      Write( CLASSNAME( Byte( CLASSX)))
                     end
                   else
-                    Write( '   ')
+                    Write( Chr( 29))
                 end
             end
         until (INCHAR = Chr( 27)) or (INCHAR = Chr( CRETURN));
         if INCHAR = Chr( CRETURN) then
           begin
-            GotoXY( 14, 6 + Byte( ATTRIBX));
+            GotoXY( 13, 5 + Byte( ATTRIBX));
             Write( '   ');
             if ATTRIBX < LUCK then
               ATTRIBX := SUCC( ATTRIBX)
@@ -360,7 +333,7 @@ var
       until (INCHAR = Chr( 27)) and CANCHG and (PTSLEFT = 0);
       repeat
         repeat
-          GotoXY( 1, 16);
+          P010B0B;
           Write( 'CHOOSE A CLASS >');
           GETKEY
         until (INCHAR >= 'A') and (INCHAR <= 'H');
@@ -371,8 +344,8 @@ var
             INCHAR := PRED( INCHAR)
           end
       until CHG2LST[ CLASSX];
-      GotoXY( 11, 14);
-      Write( SCNTOC_CLASS[ Byte( CLASSX)]);
+      GotoXY( 10, 13);
+      Write( CLASSNAME( Byte( CLASSX)));
       CHARREC.XCLASS := CLASSX;
       for ATTRIBX := STRENGTH to LUCK do
         CHARREC.ATTRIB[ ATTRIBX] := SIXATTR2[ ATTRIBX]
@@ -384,16 +357,16 @@ var
     var
       ALIGNX : TALIGN;
     begin
-      GotoXY( 1, 16);
-      GotoXY( 1, 18);
+      P010B0B;
+      GotoXY( 0, 17);
       for ALIGNX := GOOD to EVIL do
         begin
           Write( Chr( Ord( '@') + Byte( ALIGNX)));
           Write( ') ');
-          WriteLn( SCNTOC_ALIGN[ Byte( ALIGNX)])
+          WriteLn( ALIGNNAME( Byte( ALIGNX)))
         end;
       repeat
-        GotoXY( 1, 16);
+        P010B0C;
         Write( 'CHOOSE AN ALIGNMENT >');
         GETKEY
       until (INCHAR >= 'A') and (INCHAR <= 'C');
@@ -403,24 +376,25 @@ var
         SETALIGN_RL( @CHARREC, NEUTRAL)
       else
         SETALIGN_RL( @CHARREC, EVIL);
-      GotoXY( 11, 13);
-      Write( SCNTOC_ALIGN[ Byte( CHARREC.ALIGN)])
+      GotoXY( 10, 12);
+      Write( ALIGNNAME( Byte( CHARREC.ALIGN)))
     end;
 
 
     { ── KEEPCHYN ── }
-    procedure KEEPCHYN;
+    function KEEPCHYN: Byte;
     var
       VITHPMOD : SmallInt;
       CLSHPMOD : SmallInt;
       SKN      : PTSPELLSKN;
     begin
+      KEEPCHYN := UNWNONE;
       repeat
-        GotoXY( 1, 16);
+        P010B0B;
         Write( 'KEEP THIS CHARACTER (Y/N)? >');
         GETKEY
       until (INCHAR = 'Y') or (INCHAR = 'N');
-      if INCHAR = 'N' then begin _exitmakechar := true; exit; end;  { EXIT(MAKECHAR) }
+      if INCHAR = 'N' then exit( U_MAKECHAR);          { EXIT( MAKECHAR) }
 
       SKN := CHARREC.SPELLSKN;
       if (CHARREC.XCLASS = MAGE) or (CHARREC.XCLASS = BISHOP) then
@@ -468,14 +442,12 @@ var
 
 
   begin  { MAKECHAR }
-    _exitmakechar := false;
     INITCHAR;
     MAKEMENU;
     CHOSRACE;
     CHOSALIG;
     GIVEPTS;
-    KEEPCHYN;
-    if _exitmakechar then exit;
+    if KEEPCHYN = U_MAKECHAR then exit;
     SAVETCHAR( CHARACX, CHARREC)
   end;  { MAKECHAR }
 
@@ -484,21 +456,20 @@ var
   procedure CREATE;
   var
     CHARRECI  : SmallInt;
-    _exitcreate : Boolean;
 
-    procedure EXITCREA( EXITSTR: string);
+    function EXITCREA( EXITSTR: string): Byte;
     begin
       WriteLn;
       WriteLn;
       WriteLn( EXITSTR);
       WriteLn;
       WriteLn( 'PRESS ANY KEY TO CONTINUE');
+      GotoXY( 41, 0);
       GETKEY;
-      _exitcreate := true; exit   { EXIT(CREATE) }
+      EXITCREA := U_CREATE                              { EXIT( CREATE) }
     end;
 
   begin  { CREATE }
-    _exitcreate := false;
     CHARACX := -1;
     for CHARRECI := 0 to SCNTOC.RECPERDK[ ZCHAR] - 1 do
       begin
@@ -509,10 +480,7 @@ var
           end
       end;
     if CHARACX = -1 then
-      begin
-        EXITCREA( 'THERE IS NO ROOM LEFT - TRY DELETING');
-        if _exitcreate then exit
-      end;
+      if EXITCREA( 'THERE IS NO ROOM LEFT - TRY DELETING') = U_CREATE then exit;
     WriteLn;
     WriteLn;
     WriteLn( 'THAT CHARACTER DOES NOT EXIST. DO YOU');
@@ -542,34 +510,33 @@ var
         if CHARREC.STATUS <> LOST then
           begin
             LINECNT := LINECNT + 1;
-            GotoXY( 1, LINECNT + 2);
+            GotoXY( 0, LINECNT + 1);
             Write( CHARREC.NAME);
             Write( ' LEVEL ');
             Write( CHARREC.CHARLEV);
             Write( ' ');
-            Write( SCNTOC_RACE[   Byte( CHARREC.RACE)]);
+            Write( RACENAME(   Byte( CHARREC.RACE)));
             Write( ' ');
-            Write( SCNTOC_CLASS[  Byte( CHARREC.XCLASS)]);
+            Write( CLASSNAME(  Byte( CHARREC.XCLASS)));
             Write( ' (');
-            Write( SCNTOC_STATUS[ Byte( CHARREC.STATUS)]);
+            Write( STATNAME( Byte( CHARREC.STATUS)));
             Write( ')');
-            if CHARREC.INMAZE or (CHARREC.LOSTXYL[ 1] <> 0) then
+            if CHARREC.INMAZE or (CHARREC.LOSTXYL[ 3] <> 0) then   { v3.2 WC032 }
               Write( ' OUT')
           end
       end;
-    GotoXY( 1, 23);
+    GotoXY( 0, 22);
     WriteLn( '----------------------------------------');
     Write( 'YOU MAY L)EAVE WHEN READY');
-    repeat GETKEY until INCHAR = 'L';
+    repeat GotoXY( 41, 0); GETKEY until INCHAR = 'L';
     INCHAR := Chr( 0)
   end;
 
 
   { ── TRAINING ── }
-  procedure TRAINING;
+  function TRAINING: Byte;
   var
-    PASSSTR      : string[ 15];
-    _exittraining : Boolean;
+    U            : Byte;
 
 
     { ── LOSECHAR ── }
@@ -583,14 +550,14 @@ var
 
 
     { ── INSPECT ── }
-    procedure INSPECT;
+    function INSPECT: Byte;
     begin
       PARTYCNT      := 1;
       PSLOT  := CHARACTR[ 0];
       COPYCHAR( PSLOT^, CHARREC);
       CHARDISK[ 0]  := CHARACX;
       XGOTO         := XINSPCT3;
-      _done         := true; exit   { EXIT(ROLLER) }
+      INSPECT       := U_ROLLER                         { EXIT( ROLLER) }
     end;
 
 
@@ -608,12 +575,13 @@ var
 
 
     { ── DELCHAR ── }
-    procedure DELCHAR;
+    function DELCHAR: Byte;
     begin
+      DELCHAR := UNWNONE;
       RUSUREYN( 'DELETE');
-      if INCHAR = 'N' then exit;   { EXIT(DELCHAR) }
+      if INCHAR = 'N' then exit;                        { EXIT( DELCHAR) }
       LOSECHAR;
-      _exittraining := true; exit   { EXIT(TRAINING) }
+      DELCHAR := U_TRAINING                             { EXIT( TRAINING) }
     end;
 
 
@@ -625,7 +593,8 @@ var
       PP      : ^TPOSSESS;
       SKN     : PTSPELLSKN;
     begin
-      GotoXY( 1, 3);
+      GotoXY( 0, 2);
+      WriteLn( Chr( 11));
       for ATTRIBI := STRENGTH to LUCK do
         SIXATTR2[ ATTRIBI] := CHARREC.ATTRIB[ ATTRIBI];
       if GTCHGLST then;   { side-effect: fills CHG2LST }
@@ -634,13 +603,14 @@ var
           begin
             Write( Chr( Ord('A') + Byte( CLASSX)));
             Write( ') ');
-            WriteLn( SCNTOC_CLASS[ Byte( CLASSX)])
+            WriteLn( CLASSNAME( Byte( CLASSX)))
           end;
       WriteLn;
       WriteLn( 'PRESS [LETTER] TO CHANGE CLASS');
-      WriteLn( '[RET] TO NOT CHANGE CLASS':34);
+      WriteLn( '         [RET] TO NOT CHANGE CLASS');
       repeat
         repeat
+          GotoXY( 41, 0);
           GETKEY
         until (INCHAR = Chr( CRETURN)) or
               ((INCHAR >= 'A') and (INCHAR <= 'H'));
@@ -685,56 +655,10 @@ var
     end;
 
 
-    { ── CHGPASS ── }
-    procedure CHGPASS;
-    var
-      NEWPASS1 : string[ 15];
-      NEWPASS2 : string[ 15];
-    begin
-      ClrScr;
-      Write( 'ENTER NEW PASSWORD ([RET] FOR NONE)');
-      repeat
-        GotoXY( 11, 3);
-        GETPASS( NEWPASS1)
-      until Length( NEWPASS1) <= 15;
-      ClrScr;
-      Write( 'ENTER AGAIN TO BE SURE');
-      repeat
-        GotoXY( 11, 3);
-        GETPASS( NEWPASS2)
-      until Length( NEWPASS2) <= 15;
-      ClrScr;
-      if NEWPASS1 = NEWPASS2 then
-        begin
-          CHARREC.PASSWORD := NEWPASS1;
-          SAVETCHAR( CHARACX, CHARREC);
-          GTSCNTOC;
-          Write( 'PASSWORD CHANGED - ')
-        end
-      else
-        begin
-          WriteLn( 'THEY ARE NOT THE SAME - YOUR PASSWORD');
-          WriteLn( 'HAS NOT BEEN CHANGED!');
-          WriteLn;
-        end;
-      Write( 'PRESS [RET]');
-      ReadLn;
-    end;
-
-
   begin  { TRAINING }
-    _exittraining := false;
-    PARTYCNT      := 0;
-    if XGOTO <> XBCK2ROL then
-      begin
-        repeat
-          GotoXY( 10, 11);
-          Write( 'PASSWORD >');
-          GETPASS( PASSSTR)
-        until Length( PASSSTR) <= 15;
-        if PASSSTR <> CHARREC.PASSWORD then exit   { EXIT(TRAINING) — wrong pass }
-      end
-    else
+    Result   := UNWNONE;
+    PARTYCNT := 0;
+    if XGOTO = XBCK2ROL then
       begin
         XGOTO   := XTRAININ;
         PSLOT   := CHARACTR[ 0];
@@ -748,24 +672,24 @@ var
       Write( ' LEVEL ');
       Write( CHARREC.CHARLEV);
       Write( ' ');
-      Write( SCNTOC_RACE[   Byte( CHARREC.RACE)]);
+      Write( RACENAME(   Byte( CHARREC.RACE)));
       Write( ' ');
-      Write( SCNTOC_CLASS[  Byte( CHARREC.XCLASS)]);
+      Write( CLASSNAME(  Byte( CHARREC.XCLASS)));
       Write( ' (');
-      Write( SCNTOC_STATUS[ Byte( CHARREC.STATUS)]);
+      Write( STATNAME( Byte( CHARREC.STATUS)));
       WriteLn( ')');
       WriteLn;
       WriteLn( 'YOU MAY I)NSPECT THIS CHARACTER,');
-      WriteLn( 'D)ELETE  THIS CHARACTER,':32);
-      WriteLn( 'R)EROLL  THIS CHARACTER,':32);
-      WriteLn( 'C)HANGE  CLASS,':23);
-      WriteLn( 'S)ET NEW PASSWORD, OR':29);
+      WriteLn( '        D)ELETE  THIS CHARACTER,');
+      WriteLn( '        R)EROLL  THIS CHARACTER,');
+      WriteLn( '        C)HANGE  CLASS, OR');
       WriteLn( '  PRESS [RET] TO LEAVE');
+      GotoXY( 41, 0);
       GETKEY;
-      if INCHAR = Chr( CRETURN) then exit;   { EXIT(TRAINING) }
+      if INCHAR = Chr( CRETURN) then exit;              { EXIT( TRAINING) }
       case INCHAR of
-        'I': begin INSPECT;  if _done then exit; end;
-        'D': begin DELCHAR;  if _exittraining or _done then exit; end;
+        'I': exit( INSPECT);                            { only U_ROLLER }
+        'D': if DELCHAR = U_TRAINING then exit;
         'C': CHGCLASS;
         'R': begin
                RUSUREYN( 'REROLL');
@@ -776,33 +700,31 @@ var
                    MAKECHAR
                  end
              end;
-        'S': CHGPASS;
-      end;
-      if _done then exit
+      end
     until false
   end;  { TRAINING }
 
 
 begin  { ROLLER }
   WIRECHAR( CHARREC, CRSKN, CRPOSS);
-  _done := false;
   if XGOTO = XBCK2ROL then
-    begin TRAINING; if _done then exit; end;
+    if TRAINING = U_ROLLER then exit;
   repeat
     ClrScr;
-    Write(   ' ':12);
+    Write( '            ');
     WriteLn( 'TRAINING GROUNDS');
     WriteLn;
     WriteLn( 'YOU MAY ENTER A CHARACTER NAME TO ADD,');
-    Write(   ' ':8);
+    Write( '        ');
     WriteLn( 'INSPECT OR EDIT,');
     WriteLn;
-    Write(   ' ':8);
+    Write( '        ');
     WriteLn( '"*ROSTER" TO SEE ROSTER,');
     WriteLn;
-    WriteLn( 'OR PRESS [RET] FOR CASTLE.':33);
+    WriteLn( '       OR PRESS [RET] FOR CASTLE.');
     repeat
-      GotoXY( 14, 10);
+      GotoXY( 13, 9);
+      Write( Chr( 11));
       Write( 'NAME >');
       GETLINE;
       CHARNAME := GTSTRING;
@@ -810,10 +732,9 @@ begin  { ROLLER }
         begin
           ClrScr;
           XGOTO := XCASTLE;
-          break   { EXIT(ROLLER) — go to castle }
+          exit                                          { EXIT( ROLLER) }
         end
     until Length( CHARNAME) <= 15;
-    if _done or (XGOTO = XCASTLE) then break;
     if CHARNAME = '*ROSTER' then
       DSP20NM
     else
@@ -827,9 +748,9 @@ begin  { ROLLER }
                 CHARACX := TEMPX
             end;
         if CHARACX < 0 then
-          begin CREATE;   if _done then break; end
+          CREATE
         else
-          begin TRAINING; if _done then break; end
+          if TRAINING = U_ROLLER then exit
       end
   until false
 end;  { ROLLER }

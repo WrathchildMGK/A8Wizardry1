@@ -1,12 +1,14 @@
 unit UTILUNIT;
 
-{ Source: apple/wiz1c/UTILITIE + apple/wiz1b/UTILITIE2 + apple/wiz1b/UTILITIE3
+{ Source: apple/Wizardry_v3-2/Wiz1C.DSK/UTILITIE + apple/wiz1b/UTILITIE2 + apple/wiz1b/UTILITIE3
 
   Translation notes:
     - SEGMENT PROCEDURE UTILITIE -> unit procedure UTILITIE
-    - EXIT(UTILITIE) -> _done := true; exit (propagated up call chain)
+    - EXIT(UTILITIE) / EXIT(FIGHTS) past the current routine -> unwind codes
+      U_* (CONSTS); from a routine UTILITIE calls last, a plain exit.
+    - FILLROOM's recursive flood fill -> explicit stack (MP locals are static,
+      and a deep fill would overflow the 6502 stack).
     - EXIT(PROC) for current procedure -> plain exit
-    - EXIT(FIGHTS) from FINDSPOT -> _ffail flag in FIGHTS
     - WITH CHARACTR[X] DO -> TC := CHARACTR[X]; TC.FIELD
     - POSS.POSSESS[I].FIELD -> PP := TC.POSS.POSSESS[I]; PP.FIELD
     - CLASS -> XCLASS (reserved word in MP)
@@ -16,7 +18,7 @@ unit UTILUNIT;
     - MOVELEFT TOBJREC -> LOADOBJREC
     - MOVELEFT TSCNTOC -> (SCNTOC is already a global; reload stubbed)
     - RANDOM MOD N -> Random(N)
-    - GOTOXY(X,Y)  -> MVCURSOR(X,Y)
+    - GOTOXY(X,Y)  -> GotoXY(X,Y)
     - BASE12.GOTOX -> XGOTO2 (CAMP sets XGOTO2 before jumping to XCAMPSTF)
     - UNITREAD/UNITWRITE -> stubbed (disk I/O not yet wired up)
     - FOR OBJI := WEAPON TO GAUNTLET -> integer loop with TOBJTYPE cast
@@ -25,14 +27,17 @@ unit UTILUNIT;
 
 interface
 
-uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+uses TYPES, CONSTS, GLOBALS, UTIL, SCREEN;
 
 procedure UTILITIE;
 
 implementation
 
+const
+  U_UTILITIE = $01;       { unwind targets: AP P010101, P010116 }
+  U_FIGHTS   = $16;
+
 var
-  _done   : Boolean;
   MZB_W, MZB_S, MZB_E, MZB_N : TMAZEMAP;    { maze backing (WIREMAZE); one set per }
   MZB_FIGHTS : TFIGHTMAP;                   { segment, as only one floor is loaded }
   MZB_SQX    : TSQRMAP;
@@ -47,10 +52,10 @@ var
   assignment to ENUM-typed fields. Passing as a typed parameter restores the
   correct enum type. }
 procedure SETSTAT( TC: PTCHAR; ST: TSTATUS);
-begin TC.STATUS := ST end;
+begin TC^.STATUS := TSTATUS( Byte( ST)) end;   { TC^: mpbugs/bug15 }
 
 procedure SETXCLS( TC: PTCHAR; CL: TCLASS);
-begin TC.XCLASS := CL end;
+begin TC^.XCLASS := TCLASS( Byte( CL)) end;
 
 
 procedure UTILITIE;
@@ -84,12 +89,12 @@ procedure UTILITIE;
             SPELLNM := Copy( SPELLNM, 2, Length( SPELLNM) - 1);
             SPLISTX := SPLISTX + 1
           end;
-        MVCURSOR( 10 * (SPLISTX div 20), 2 + SPLISTX mod 20);
+        GotoXY( 10 * (SPLISTX div 20), 2 + SPLISTX mod 20);
         TC := CHARACTR[ CHARX];
-        SKNS := TC.SPELLSKN;
+        SKNS := TC^.SPELLSKN;
         if SKNS^[ SPELLX] then
           begin
-            PRINTSTR( SPELLNM);
+            Write( SPELLNM);
             SPLISTX := SPLISTX + 1
           end;
         SPELLX := SPELLX + 1
@@ -98,10 +103,10 @@ procedure UTILITIE;
 
       procedure SPRETURN;
       begin
-        MVCURSOR( 0, 23);
-        PRINTSTR( 'L)EAVE WHEN READY');
+        GotoXY( 0, 23);
+        Write( 'L)EAVE WHEN READY');
         repeat
-          MVCURSOR( 41, 0);
+          GotoXY( 41, 0);
           GETKEY
         until INCHAR = 'L';
         INCHAR := Chr( 0)
@@ -176,8 +181,8 @@ procedure UTILITIE;
       WriteLn;
       WriteLn;
       WriteLn( 'YOU MAY SEE M)AGE OR P)RIEST SPELL BOOKS');
-      WriteLn( 'OR L)EAVE.');
-      MVCURSOR( 41, 15);
+      WriteLn( '            OR L)EAVE.');
+      GotoXY( 41, 15);
       GETKEY;
       case INCHAR of
         'M': PRMAGE;
@@ -186,8 +191,7 @@ procedure UTILITIE;
     until INCHAR = 'L';
     INCHAR := Chr( 0);
     XGOTO := XBK2CMP2;
-    LLBASE04 := CHARX;
-    _done := true; exit
+    LLBASE04 := CHARX                                   { EXIT( UTILITIE) }
   end;  { RDSPELLS }
 
 
@@ -201,10 +205,10 @@ procedure UTILITIE;
     PP     : ^TPOSSESS;
 
 
-    procedure EXITIDIT;
+    function EXITIDIT: Byte;
     begin
       LLBASE04 := CHARX;
-      _done := true; exit
+      EXITIDIT := U_UTILITIE                            { EXIT( UTILITIE) }
     end;
 
 
@@ -213,15 +217,15 @@ procedure UTILITIE;
     TC := CHARACTR[ CHARX];
     XGOTO := XBK2CMP2;
     repeat
-      MVCURSOR( 0, 18);
+      GotoXY( 0, 18);
       Write( Chr( 11));
       Write( 'IDENTIFY WHAT ITEM (0=EXIT) ? >');
       GETKEY;
       ITEMX := Byte( INCHAR) - Byte( '0');
-      if ITEMX = 0 then begin EXITIDIT; if _done then exit end
-    until (ITEMX > 0) or (ITEMX <= TC.POSS.POSSCNT);
+      if ITEMX = 0 then if EXITIDIT = U_UTILITIE then exit
+    until (ITEMX > 0) and (ITEMX <= TC.POSS.POSSCNT);   { v3.2 WC001 }
     PP := TC.POSS.POSSESS[ ITEMX];
-    if PP.IDENTIF then begin EXITIDIT; if _done then exit end;
+    if PP.IDENTIF then if EXITIDIT = U_UTILITIE then exit;
     PP.IDENTIF :=
       (Random( 100)) < (10 + 5 * TC.CHARLEV);
     if PP.IDENTIF then
@@ -234,7 +238,7 @@ procedure UTILITIE;
         PP.CURSED := OBJ.CURSED;
         XGOTO := XEQPDSP
       end;
-    EXITIDIT
+    if EXITIDIT = U_UTILITIE then exit
   end;  { IDITEM }
 
 
@@ -249,51 +253,43 @@ procedure UTILITIE;
     LCPOSS    : TPOSSBLK;
 
 
-    procedure EXITKAND;
+    function EXITKAND: Byte;
     begin
       WriteLn;
       WriteLn( 'L)EAVE WHEN READY');
-      MVCURSOR( 41, 0);
+      GotoXY( 41, 0);
       repeat
         GETKEY
       until INCHAR = 'L';
       INCHAR := 'A';
       LLBASE04 := CHARX;
       XGOTO := XBK2CMP2;
-      _done := true; exit
+      EXITKAND := U_UTILITIE                            { EXIT( UTILITIE) }
     end;
 
 
-    procedure KANDILOC;
+    function KANDILOC: Byte;
     begin
+      KANDILOC := UNWNONE;
       if Byte( LOSTCHAR.STATUS) = Byte( LOST) then exit;
-      if Byte( LOSTCHAR.STATUS) < Byte( DEAD) then
-        WriteLn( 'STILL WITH US!')
-      else
+      if Byte( LOSTCHAR.STATUS) >= Byte( DEAD) then     { v3.2 WC043 }
+        if LOSTCHAR.LOSTXYL[ 3] = 0 then
+          begin
+            WriteLn( 'IN THE MORGUE');                  { v3.2 WC002 }
+            exit( EXITKAND)
+          end;
+      if LOSTCHAR.LOSTXYL[ 3] = 0 then
+        WriteLn( 'STILL WITH US!');
+      if LOSTCHAR.LOSTXYL[ 3] > 0 then
         begin
-          if (LOSTCHAR.LOSTXYL[ 1] = 0) and
-             (LOSTCHAR.LOSTXYL[ 2] = 0) and
-             (LOSTCHAR.LOSTXYL[ 3] = 0) then
-            WriteLn( 'IN THE MOURGE')
-          else
-            if LOSTCHAR.LOSTXYL[ 3] <= 0 then
-              WriteLn( 'UNREACHABLE!')
-            else
-              begin
-                Write( 'IN THE ');
-                if LOSTCHAR.LOSTXYL[ 2] > 9 then
-                  Write( 'NORTH ')
-                else
-                  Write( 'SOUTH ');
-                if LOSTCHAR.LOSTXYL[ 1] > 9 then
-                  Write( 'EAST')
-                else
-                  Write( 'WEST');
-                Write( ' OF LEVEL ');
-                WriteLn( LOSTCHAR.LOSTXYL[ 3])
-              end
+          Write( 'AT EAST ');
+          Write( LOSTCHAR.LOSTXYL[ 1]);
+          Write( ', NORTH ');
+          Write( LOSTCHAR.LOSTXYL[ 2]);
+          Write( ' OF LEVEL ');
+          WriteLn( LOSTCHAR.LOSTXYL[ 3])
         end;
-      EXITKAND; if _done then exit
+      KANDILOC := EXITKAND
     end;  { KANDILOC }
 
 
@@ -315,10 +311,10 @@ procedure UTILITIE;
       begin
         LOADTCHAR( CHARXDSK, LOSTCHAR);
         if LOSTCHAR.NAME = LOCSTRING then
-          begin KANDILOC; if _done then exit end
+          if KANDILOC = U_UTILITIE then exit
       end;
     WriteLn( 'LOST FOREVER!');
-    EXITKAND
+    if EXITKAND = U_UTILITIE then exit
   end;  { KANDIFND }
 
 
@@ -331,7 +327,7 @@ procedure UTILITIE;
       begin
         Write( Chr( 12));
         WriteLn( 'ENCHANTMENTS PREVENT SPELL FROM WORKING');
-        _done := true; exit
+        exit                                            { EXIT( UTILITIE) }
       end;
     CHARX := LLBASE04;
     Write( Chr( 12));
@@ -357,12 +353,11 @@ procedure UTILITIE;
     WriteLn;
     WriteLn( 'L)EAVE WHEN READY');
     repeat
-      MVCURSOR( 41, 0);
+      GotoXY( 41, 0);
       GETKEY
     until INCHAR = 'L';
     INCHAR := 'A';
-    LLBASE04 := CHARX;
-    _done := true; exit
+    LLBASE04 := CHARX                                   { EXIT( UTILITIE) }
   end;  { DUMAPIC }
 
 
@@ -375,10 +370,10 @@ procedure UTILITIE;
     DELTAEW : SmallInt;
 
 
-    procedure TELEPORT;
+    function TELEPORT: Byte;
 
 
-      procedure ROCK;
+      function ROCK: Byte;
       var X : SmallInt; XTC : ^TCHAR;
       begin
         WriteLn( 'YOU LANDED IN SOLID ROCK OUTSIDE THE');
@@ -390,11 +385,11 @@ procedure UTILITIE;
             SETSTAT( XTC, LOST)
           end;
         XGOTO := XCEMETRY;
-        _done := true; exit
+        ROCK := U_UTILITIE                    { EXIT( UTILITIE) }
       end;
 
 
-      procedure VOLCANO;
+      function VOLCANO: Byte;
       var X : SmallInt; XTC : ^TCHAR;
       begin
         WriteLn( 'YOU MATERIALIZED IN MID-AIR AND FELL');
@@ -402,16 +397,16 @@ procedure UTILITIE;
         for X := 0 to PARTYCNT - 1 do
           begin
             XTC := CHARACTR[ X];
-            if Byte( XTC.STATUS) < Byte( DEAD) then
+            if Byte( XTC^.STATUS) < Byte( DEAD) then
               SETSTAT( XTC, DEAD)
           end;
         MAZELEV := 0;
         XGOTO := XCHK4WIN;
-        _done := true; exit
+        VOLCANO := U_UTILITIE                 { EXIT( UTILITIE) }
       end;
 
 
-      procedure MOAT;
+      function MOAT: Byte;
       var X : SmallInt; XTC : ^TCHAR;
       begin
         WriteLn( 'YOU APPEARED IN THE CASTLE MOAT AND');
@@ -419,27 +414,27 @@ procedure UTILITIE;
         for X := 0 to PARTYCNT - 1 do
           begin
             XTC := CHARACTR[ X];
-            if Byte( XTC.STATUS) < Byte( DEAD) then
+            if Byte( XTC^.STATUS) < Byte( DEAD) then
               if (Random( 25)) > XTC.ATTRIB[ AGILITY] then
                 SETSTAT( XTC, DEAD)
           end;
         MAZELEV := 0;
         XGOTO := XCHK4WIN;
-        _done := true; exit
+        MOAT := U_UTILITIE                    { EXIT( UTILITIE) }
       end;
 
 
-      procedure TOSHOPS;
+      function TOSHOPS: Byte;
       begin
         XGOTO := XCHK4WIN;
-        _done := true; exit
+        TOSHOPS := U_UTILITIE                 { EXIT( UTILITIE) }
       end;
 
 
-      procedure BOUNCE;
+      function BOUNCE: Byte;
       begin
         WriteLn( 'YOU BOUNCED BACK TO WHERE YOU WERE!');
-        _done := true; exit
+        BOUNCE := U_UTILITIE                  { EXIT( UTILITIE) }
       end;
 
 
@@ -447,25 +442,25 @@ procedure UTILITIE;
       Write( Chr( 12));
       XGOTO := XNEWMAZE;
       if MAZELEV + DELTAUD = SCNTOC.RECPERDK[ ZMAZE] then
-        begin BOUNCE; if _done then exit end;
+        exit( BOUNCE);
       MAZEX   := MAZEX + DELTAEW;
       MAZEY   := MAZEY + DELTANS;
       MAZELEV := MAZELEV + DELTAUD;
       if ((MAZEX < 0) or (MAZEX > 19) or
           (MAZEY < 0) or (MAZEY > 19) or
           (MAZELEV > SCNTOC.RECPERDK[ ZMAZE])) and (MAZELEV > 0) then
-        begin ROCK; if _done then exit end
+        Result := ROCK
       else
         begin
           if MAZELEV < 0 then
-            begin VOLCANO; if _done then exit end
+            Result := VOLCANO
           else if MAZELEV = 0 then
             if (MAZEX = 0) and (MAZEY = 0) then
-              begin TOSHOPS; if _done then exit end
+              Result := TOSHOPS
             else
-              begin MOAT; if _done then exit end
+              Result := MOAT
         end;
-      _done := true; exit
+      Result := U_UTILITIE                              { EXIT( UTILITIE) }
     end;  { TELEPORT }
 
 
@@ -485,13 +480,13 @@ procedure UTILITIE;
     DELTANS := 0;
     DELTAUD := 0;
     repeat
-      MVCURSOR( 18, 6); PRINTNUM( DELTAEW, 4);
-      MVCURSOR( 18, 7); PRINTNUM( DELTANS, 4);
-      MVCURSOR( 18, 8); PRINTNUM( DELTAUD, 4);
-      MVCURSOR( 41, 0);
+      GotoXY( 18, 6); WRITEINT( DELTAEW, 4);
+      GotoXY( 18, 7); WRITEINT( DELTANS, 4);
+      GotoXY( 18, 8); WRITEINT( DELTAUD, 4);
+      GotoXY( 41, 0);
       GETKEY;
       if INCHAR = Chr( CRETURN) then
-        begin TELEPORT; if _done then exit end
+        if TELEPORT = U_UTILITIE then exit
       else
         case INCHAR of
           'N': DELTANS := DELTANS + 1;
@@ -503,8 +498,7 @@ procedure UTILITIE;
         end
     until INCHAR = Chr( 27);
     XGOTO := XBK2CMP2;
-    LLBASE04 := CHARX;
-    _done := true; exit
+    LLBASE04 := CHARX                                   { EXIT( UTILITIE) }
   end;  { MALOR_PROC }
 
 
@@ -542,12 +536,14 @@ procedure UTILITIE;
       FIGHTX  : SmallInt;
       Y       : SmallInt;
       X       : SmallInt;
-      _ffail  : Boolean;
+      FX, FY  : array[ 0..399] of Byte;   { FILLROOM's stack }
+      FSP     : SmallInt;
 
 
-      procedure FINDSPOT;
+      function FINDSPOT: Byte;
       var X1, Y1 : SmallInt;
       begin
+        FINDSPOT := UNWNONE;
         X1 := Random( 20);
         Y1 := Random( 20);
         FIGHTX := X1;
@@ -565,30 +561,47 @@ procedure UTILITIE;
                 FIGHTY := 0
             end
         until (FIGHTX = X1) and (FIGHTY = Y1);
-        _ffail := true; exit  { EXIT(FIGHTS) — no spot available }
+        FINDSPOT := U_FIGHTS              { EXIT( FIGHTS): no spot available }
       end;  { FINDSPOT }
 
 
-      procedure FILLROOM( X, Y: SmallInt);
+      procedure FILLAT( X, Y: SmallInt);
+      { Mark (X, Y) and stack it, unless it is no fight square or done. }
       begin
         X := (X + 20) mod 20;
         Y := (Y + 20) mod 20;
         if (MZFGT( X, Y) = 0) or FIGHTMAP[ X][ Y] then exit;
         FIGHTMAP[ X][ Y] := true;
-        if MZNN( X, Y) = Byte( OPEN) then FILLROOM( X, Y + 1);
-        if MZEE( X, Y) = Byte( OPEN) then FILLROOM( X + 1, Y);
-        if MZSS( X, Y) = Byte( OPEN) then FILLROOM( X, Y - 1);
-        if MZWW( X, Y) = Byte( OPEN) then FILLROOM( X - 1, Y)
+        FX[ FSP] := X;
+        FY[ FSP] := Y;
+        Inc( FSP)
+      end;
+
+
+      procedure FILLROOM( X, Y: SmallInt);
+      { AP P010118, a recursive flood fill: the same squares are marked
+        whatever the order, so a plain stack does. }
+      begin
+        FSP := 0;
+        FILLAT( X, Y);
+        while FSP > 0 do
+          begin
+            Dec( FSP);
+            X := FX[ FSP];
+            Y := FY[ FSP];
+            if MZNN( X, Y) = Byte( OPEN) then FILLAT( X, Y + 1);
+            if MZEE( X, Y) = Byte( OPEN) then FILLAT( X + 1, Y);
+            if MZSS( X, Y) = Byte( OPEN) then FILLAT( X, Y - 1);
+            if MZWW( X, Y) = Byte( OPEN) then FILLAT( X - 1, Y)
+          end
       end;  { FILLROOM }
 
 
     begin  { FIGHTS }
-      _ffail := false;
       FillChar( FIGHTMAP, SizeOf( FIGHTMAP), 0);
       for X := 1 to 9 do
         begin
-          FINDSPOT;
-          if _ffail then exit;
+          if FINDSPOT = U_FIGHTS then exit;
           FILLROOM( FIGHTX, FIGHTY)
         end;
       for X := 0 to 19 do
@@ -604,7 +617,7 @@ procedure UTILITIE;
       begin
         Write( Chr( 12));
         XGOTO := XCHK4WIN;
-        _done := true; exit
+        exit                                            { EXIT( UTILITIE) }
       end;
     if MAZELEV < 0 then
       begin
@@ -615,8 +628,7 @@ procedure UTILITIE;
       XGOTO := XRUNNER;
     LOADTMAZE( MAZELEV - 1, MAZEMAP);
     FIGHTS;
-    CLRRECT( 1, 11, 38, 4);
-    _done := true; exit
+    CLRRECT( 1, 11, 38, 4)                              { EXIT( UTILITIE) }
   end;  { NEWMAZE }
 
 
@@ -633,6 +645,8 @@ procedure UTILITIE;
     LUCKI    : SmallInt;
     OBJI     : TOBJTYPE;
     OBJI_I   : SmallInt;                   { integer runner for enum loop }
+    ECLASS   : TCLASS;                     { "case TC^.XCLASS of" is rejected }
+    ERACE    : TRACE;                      {   (CASE types), TC.X is bug15    }
     OBJ      : TOBJREC;
     OBJLIST  : array[ 0..8] of SmallInt;   { [0] unused; AP: ARRAY[1..8] }
     TC       : ^TCHAR;
@@ -725,7 +739,7 @@ procedure UTILITIE;
 
     begin  { CHSPCPOW }
       TC := CHARACTR[ LCHARI];
-      for POSSI := 1 to TC.POSS.POSSCNT do
+      for POSSI := 1 to TC^.POSS.POSSCNT do
         begin
           PP := TC.POSS.POSSESS[ POSSI];
           if PP.EQINDEX > 0 then
@@ -746,14 +760,13 @@ procedure UTILITIE;
     begin
       TC := CHARACTR[ LCHARI];
       FillChar( CANUSE, SizeOf( CANUSE), 0);
-      for POSSX := 1 to TC.POSS.POSSCNT do
+      for POSSX := 1 to TC^.POSS.POSSCNT do
         begin
           PP := TC.POSS.POSSESS[ POSSX];
           LOADOBJREC( PP.EQINDEX, OBJ);
-          if OBJ.CLASSUSE[ TC.XCLASS] then
+          if OBJ.CLASSUSE[ TC^.XCLASS] then
             CANUSE[ Byte( OBJ.OBJTYPE)] := true;
-          if TC.HEALPTS < OBJ.HEALPTS then
-            TC.HEALPTS := OBJ.HEALPTS;
+          TC.HEALPTS := TC.HEALPTS + OBJ.HEALPTS;      { v3.2 WC010: items stack }
           for TEMPX := 0 to 13 do
             TC.WEPVSTY2[ 0][ TEMPX] :=
               TC.WEPVSTY2[ 0][ TEMPX] or OBJ.WEPVSTY2[ TEMPX];
@@ -768,6 +781,7 @@ procedure UTILITIE;
     var
       ATC : ^TCHAR;
       APP : ^TPOSSESS;
+      K   : Byte;
     begin
       UNARMED := false;
       LOADOBJREC( OBJID, OBJ);
@@ -775,7 +789,7 @@ procedure UTILITIE;
       APP := ATC.POSS.POSSESS[ APOSSX];
       APP.CURSED := OBJ.CURSED;
       if (OBJ.ALIGN = UNALIGN) or
-         (Byte( OBJ.ALIGN) = Byte( ATC.ALIGN)) then
+         (Byte( OBJ.ALIGN) = Byte( ATC^.ALIGN)) then
         begin
           if OBJ.XTRASWNG > ATC.SWINGCNT then
             ATC.SWINGCNT := OBJ.XTRASWNG;
@@ -784,10 +798,13 @@ procedure UTILITIE;
           if OBJ.OBJTYPE = WEAPON then
             begin
               LLBASE04 := ATC.HPDAMRC.HPMINAD;
-              ATC.HPDAMRC := OBJ.WEPHPDAM;
+              ATC.HPDAMRC.LEVEL   := OBJ.WEPHPDAM.LEVEL;   { not a record :=, }
+              ATC.HPDAMRC.HPFAC   := OBJ.WEPHPDAM.HPFAC;   {   mpbugs/bug15   }
+              ATC.HPDAMRC.HPMINAD := OBJ.WEPHPDAM.HPMINAD;
               ATC.HPDAMRC.HPMINAD := ATC.HPDAMRC.HPMINAD + LLBASE04;
               ATC.CRITHITM := ATC.CRITHITM or OBJ.CRITHITM;
-              ATC.WEPVSTYP := OBJ.WEPVSTYP
+              for K := 0 to 13 do                       { not := or Move: mpbugs/bug15 }
+                ATC.WEPVSTYP[ K] := OBJ.WEPVSTYP[ K]
             end
         end
       else
@@ -804,7 +821,7 @@ procedure UTILITIE;
     var POSSX : SmallInt;
     begin
       TC := CHARACTR[ LCHARI];
-      for POSSX := 1 to TC.POSS.POSSCNT do
+      for POSSX := 1 to TC^.POSS.POSSCNT do
         begin
           PP := TC.POSS.POSSESS[ POSSX];
           if PP.EQUIPED then
@@ -819,7 +836,7 @@ procedure UTILITIE;
       procedure EQUIPONE;
       begin
         repeat
-          MVCURSOR( 0, 15);
+          GotoXY( 0, 15);
           Write( Chr( 11));
           Write( 'WHICH ONE ([RET] FOR NONE) ? >');
           GETKEY;
@@ -863,19 +880,19 @@ procedure UTILITIE;
       WriteLn;
       WriteLn;
       POSSCNT := 0;
-      for POSSI := 1 to TC.POSS.POSSCNT do
+      for POSSI := 1 to TC^.POSS.POSSCNT do
         begin
           PP := TC.POSS.POSSESS[ POSSI];
           if PP.EQINDEX > 0 then
             begin
               LOADOBJREC( PP.EQINDEX, OBJ);
               if (OBJ.OBJTYPE = OBJI) and
-                 OBJ.CLASSUSE[ TC.XCLASS] then
+                 OBJ.CLASSUSE[ TC^.XCLASS] then
                 begin
                   POSSCNT := POSSCNT + 1;
                   OBJLIST[ POSSCNT] := POSSI;
                   Write( '          ');
-                  PRINTNUM( POSSCNT, 1);
+                  Write( POSSCNT);
                   Write( ')');
                   if PP.CURSED then
                     Write( '-')
@@ -905,7 +922,7 @@ procedure UTILITIE;
         end;
       if TEMPX > 0 then
         begin
-          MVCURSOR( 7, 23);
+          GotoXY( 7, 23);
           CURSBELL( '** CURSED **');
           PP := TC.POSS.POSSESS[ OBJLIST[ TEMPX]];
           PP.EQUIPED := true;
@@ -947,7 +964,8 @@ procedure UTILITIE;
     if TEMPX < 1 then TEMPX := 1;
     for LUCKI := 0 to 4 do
       TC.LUCKSKIL[ LUCKI] := TEMPX;
-    case TC.XCLASS of
+    ECLASS := TC^.XCLASS;
+    case ECLASS of
       FIGHTER: UPLCKSKL( 0, 3);
       MAGE:    UPLCKSKL( 4, 3);
       PRIEST:  UPLCKSKL( 1, 3);
@@ -960,7 +978,8 @@ procedure UTILITIE;
                  UPLCKSKL( 2, 4); UPLCKSKL( 3, 3); UPLCKSKL( 4, 2)
                end;
     end;
-    case TC.RACE of
+    ERACE := TC^.RACE;
+    case ERACE of
       HUMAN:  UPLCKSKL( 0, 1);
       ELF:    UPLCKSKL( 2, 2);
       DWARF:  UPLCKSKL( 3, 4);
@@ -973,9 +992,9 @@ procedure UTILITIE;
           PP := TC.POSS.POSSESS[ TEMPX];
           PP.EQUIPED := false
         end;
-    if (TC.XCLASS = PRIEST) or
-       (TC.XCLASS = FIGHTER) or
-       (Byte( TC.XCLASS) >= Byte( SAMURAI)) then
+    if (TC^.XCLASS = PRIEST) or
+       (TC^.XCLASS = FIGHTER) or
+       (Byte( TC^.XCLASS) >= Byte( SAMURAI)) then
       TC.HPCALCMD := 2 + TC.CHARLEV div 3
     else
       TC.HPCALCMD := TC.CHARLEV div 5;
@@ -991,14 +1010,14 @@ procedure UTILITIE;
       if TC.ATTRIB[ STRENGTH] < 6 then
         TC.HPCALCMD := TC.HPCALCMD + TC.ATTRIB[ STRENGTH] - 6;
     TC.HEALPTS  := 0;
-    TC.CRITHITM := TC.XCLASS = NINJA;
+    TC.CRITHITM := TC^.XCLASS = NINJA;
     TC.SWINGCNT := 1;
-    if TC.XCLASS = NINJA then
-      TC.HPDAMRC.HPFAC := 4;
+    if TC^.XCLASS = NINJA then
+      TC.HPDAMRC.HPFAC := 8;                            { v3.2 WC030 }
     TC.ARMORCL := 10;
-    if (TC.XCLASS = FIGHTER) or (Byte( TC.XCLASS) >= Byte( SAMURAI)) then
+    if (TC^.XCLASS = FIGHTER) or (Byte( TC^.XCLASS) >= Byte( SAMURAI)) then
       TC.SWINGCNT := TC.SWINGCNT + (TC.CHARLEV div 5) +
-                     SmallInt( TC.XCLASS = NINJA);
+                     SmallInt( TC^.XCLASS = NINJA);
     if TC.SWINGCNT > 10 then TC.SWINGCNT := 10;
     INITSTUF;
     NORMPOW;
@@ -1014,9 +1033,9 @@ procedure UTILITIE;
     else
       ARM4CHAR;
     TC := CHARACTR[ LCHARI];
-    if TC.XCLASS = NINJA then
+    if TC^.XCLASS = NINJA then
       if UNARMED then
-        TC.ARMORCL := (TC.ARMORCL - (TC.CHARLEV div 3)) - 2
+        TC.ARMORCL := TC.ARMORCL - TC.CHARLEV          { v3.2 WC030 }
   end;  { EQUIPCHR }
 
 
@@ -1063,23 +1082,23 @@ procedure UTILITIE;
   begin
     XGOTO := XINSPCT2;
     if PARTYCNT < 2 then exit;
-    MVCURSOR( 0, 11);
+    GotoXY( 0, 11);
     Write( Chr( 11));
     Write( '               REORDERING');
     for PARTYX := 0 to PARTYCNT - 1 do
       begin
         LIST[ PARTYX] := 99;
-        MVCURSOR( 0, 13 + PARTYX);
-        PRINTNUM( PARTYX + 1, 1);
+        GotoXY( 0, 13 + PARTYX);
+        Write( PARTYX + 1);
         Write( ')')
       end;
     for PARTYX := 0 to PARTYCNT - 2 do
       begin
         repeat
           DONE := false;
-          MVCURSOR( 1, 13 + PARTYX);
+          GotoXY( 1, 13 + PARTYX);
           Write( '   ');
-          MVCURSOR( 1, 13 + PARTYX);
+          GotoXY( 1, 13 + PARTYX);
           Write( '>>');
           GETKEY;
           PARTYNUM := Byte( INCHAR) - Byte( '1');
@@ -1090,7 +1109,7 @@ procedure UTILITIE;
                 DONE := true
               end
         until DONE;
-        MVCURSOR( 1, 13 + PARTYX);
+        GotoXY( 1, 13 + PARTYX);
         Write( ') ');
         TC := CHARACTR[ PARTYNUM];
         Write( TC.NAME)
@@ -1109,7 +1128,7 @@ procedure UTILITIE;
             LIST[ PARTYX]        := LIST[ PARTYNUM];
             LIST[ PARTYNUM]      := SWITCH
           end;
-    MVCURSOR( 1, 13 + PARTYCNT - 1);
+    GotoXY( 1, 13 + PARTYCNT - 1);
     Write( ') ');
     TC := CHARACTR[ PARTYCNT - 1];
     Write( TC.NAME)
@@ -1119,7 +1138,6 @@ procedure UTILITIE;
   { ── UTILITIE main body ───────────────────────────────────────────────────── }
 
 begin
-  _done := false;
   if XGOTO <> XNEWMAZE then TEXTMODE;
   case XGOTO of
     XCAMPSTF:

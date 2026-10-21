@@ -1,7 +1,7 @@
 unit CASTLEUNIT;
 
 { Wizardry I — CASTLE segment.
-  Source: apple/wiz1c/CASTLE + CASTLE2.
+  Source: apple/Wizardry_v3-2/Wiz1C.DSK/CASTLE + CASTLE2 (v3.2).
   Key changes from Apple Pascal:
     - MOVELEFT record copies -> LOADTCHAR / SAVETCHAR (pointer-aware loaders)
     - WITH CHARACTR[X] DO -> local TC := CHARACTR[X] pointer
@@ -10,24 +10,30 @@ unit CASTLEUNIT;
     - CLASS field renamed XCLASS (reserved word in MP)
     - TWIZLONG fields LOW/MID/HIGH -> XLOW/XMID/XHIGH
     - LOSTXYL variant record -> flat LOSTXYL array
-    - GOTOXY -> MVCURSOR; UNITCLEAR -> CLRRECT
     - GETLINE result in GTSTRING (not a parameter)
-    - SPELLSKN: ^TSPELLSKN — access as TC.SPELLSKN^[i]
+    - SPELLSKN: ^TSPELLSKN — access as TC^.SPELLSKN^[i]
     - CPCALLED copy-protection: skipped in Atari port
     - KEYAVAIL: Peek($02FC) <> $FF
     - TEXP access: EXP[Ord(XCLASS)*13 + CHARLEV]^ (1-D pointer array)
     - MP nesting limit 3: hoisted to unit level —
         SPLPERLV, NWPRIEST, NWMAGE, MINSPCNT, MINMAG, MINPRI, SETSPELS,
         MOREHP, TRY2LRN, TRYMAGE, TRYPRI, TRYLEARN,
-        GAINLOST, MADELEV, HEALHP }
+        GAINLOST, MADELEV, HEALHP
+    - EXIT( CASTLE / ADVNTINN) from nested routines: unwind codes (CONSTS);
+      EXIT( ADDPARTY) in EXITADDP and EXIT( GAINLOST) in OLDAGE are inlined
+      into their targets, so a plain exit does it. }
 
 interface
 
-uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+uses TYPES, CONSTS, GLOBALS, UTIL, SCREEN;
 
 procedure CASTLE;
 
 implementation
+
+const
+  U_CASTLE   = $01;       { unwind targets: AP P010A01, P010A0F }
+  U_ADVNTINN = $0F;
 
 { ── Unit-level vars shared by hoisted sub-procedures ─────────────────────── }
 var
@@ -83,7 +89,7 @@ procedure MINSPCNT( var SPLGRPS: TSPELL7G; GROUPI, LOWINDX, HIGHINDX: SmallInt);
 var SPELLI, SPELKNOW : SmallInt; TC : ^TCHAR; SKNS : ^TSPELLSKN;
 begin
   TC       := CHARACTR[ _partyx];
-  SKNS     := TC.SPELLSKN;
+  SKNS     := TC^.SPELLSKN;
   SPELKNOW := 0;
   for SPELLI := LOWINDX to HIGHINDX do
     if SKNS^[ SPELLI] then
@@ -136,7 +142,7 @@ function MOREHP: SmallInt;
 var HITPTS : SmallInt; TC : ^TCHAR;
 begin
   TC := CHARACTR[ _partyx];
-  case TCLASS( TC.XCLASS) of
+  case TCLASS( TC^.XCLASS) of
     FIGHTER, LORD:         HITPTS := Random( 10);
     PRIEST,  SAMURAI:      HITPTS := Random(  8);
     THIEF,   BISHOP, NINJA: HITPTS := Random(  6);
@@ -160,7 +166,7 @@ procedure TRY2LRN( LOWINDX, HIGHINDX: SmallInt);
 var SPELLI : SmallInt; SPLKNOWN : Boolean; TC : ^TCHAR; SKNS : ^TSPELLSKN;
 begin
   TC       := CHARACTR[ _partyx];
-  SKNS     := TC.SPELLSKN;
+  SKNS     := TC^.SPELLSKN;
   SPLKNOWN := false;
   for SPELLI := LOWINDX to HIGHINDX do
     SPLKNOWN := SPLKNOWN or SKNS^[ SPELLI];
@@ -287,9 +293,9 @@ begin
   GAINLOST;
   NEWHPMAX := 0;
   TC := CHARACTR[ _partyx];   { refresh after GAINLOST may have changed TC.HPMAX }
-  for CHARLEV := 1 to TC.CHARLEV do
+  for CHARLEV := 1 to TC^.CHARLEV do
     NEWHPMAX := NEWHPMAX + MOREHP;
-  if Byte( TC.XCLASS) = Byte( SAMURAI) then
+  if Byte( TC^.XCLASS) = Byte( SAMURAI) then
     NEWHPMAX := NEWHPMAX + MOREHP;
   if NEWHPMAX <= TC.HPMAX then
     NEWHPMAX := TC.HPMAX + 1;
@@ -301,7 +307,7 @@ end;
 procedure HEALHP;
 var PAUSEX : SmallInt; TC : ^TCHAR;
 begin
-  MVCURSOR( 0, 13);
+  GotoXY( 0, 13);
   TC := CHARACTR[ _partyx];
   TC.HPLEFT := TC.HPLEFT + _hpadd;
   if TC.HPLEFT > TC.HPMAX then
@@ -312,15 +318,15 @@ begin
   WriteLn;
   WriteLn;
   Write( '         HIT POINTS (');
-  Write( TC.HPLEFT: 1);
+  Write( TC.HPLEFT);
   Write( '/');
-  Write( TC.HPMAX: 1);
+  Write( TC.HPMAX);
   Write( ')');
   WriteLn;
   WriteLn;
   Write( '               GOLD  ');
   PRNTLONG( TC.GOLD);
-  MVCURSOR( 41, 10);
+  GotoXY( 41, 10);
   for PAUSEX := 1 to 500 do
     begin end
 end;
@@ -331,62 +337,41 @@ end;
 procedure CASTLE;
 
 
-  procedure GETPASS( var PASSWORD: string);
-  var RANDX, CHRCNT : SmallInt;
-  begin
-    CHRCNT := 0;
-    repeat
-      GETKEY;
-      if INCHAR <> Chr( CRETURN) then
-        if CHRCNT < 15 then
-          begin
-            for RANDX := 0 to Random( 2) do
-              Write( Chr( 88));   { 'X' — password echo mask }
-            CHRCNT := CHRCNT + 1;
-            PASSWORD[ CHRCNT] := INCHAR
-          end
-        else
-          Write( Chr( 7))
-    until INCHAR = Chr( CRETURN);
-    WriteLn;
-    PASSWORD[ 0] := Chr( CHRCNT)
-  end;
-
-
   procedure CHARINFO( CHARX: SmallInt);
   var TC : ^TCHAR;
   begin
     TC := CHARACTR[ CHARX];
-    MVCURSOR( 0, 5 + CHARX);
+    GotoXY( 0, 5 + CHARX);
     Write( ' ');
-    Write( (CHARX + 1): 2);
+    WRITEINT( (CHARX + 1), 2);
     Write( ' ');
     Write( TC.NAME);
-    MVCURSOR( 19, 5 + CHARX);
-    Write( Copy( SCNTOC_ALIGN[ TC.ALIGN], 1, 1));
+    GotoXY( 19, 5 + CHARX);
+    Write( LEFTSTR( ALIGNNAME( Byte( TC^.ALIGN)), 1));
     Write( '-');
-    Write( Copy( SCNTOC_CLASS[ TC.XCLASS], 1, 3));
+    Write( LEFTSTR( CLASSNAME( Byte( TC^.XCLASS)), 3));
     Write( ' ');
     if TC.ARMORCL > -10 then
-      Write( TC.ARMORCL: 2)
+      WRITEINT( TC.ARMORCL, 2)
     else
       Write( 'LO');
-    Write( TC.HPLEFT: 5);
+    WRITEINT( TC.HPLEFT, 5);
     Write( ' ');
-    if TC.STATUS = OK then
+    if TC^.STATUS = OK then
       if TC.LOSTXYL[ 1] <> 0 then
         WriteLn( 'POISON')
       else
-        WriteLn( TC.HPMAX: 4)
+        begin WRITEINT( TC.HPMAX, 4); WriteLn end
     else
-      WriteLn( SCNTOC_STATUS[ TC.STATUS])
+      WriteLn( STATNAME( Byte( TC^.STATUS)))
   end;
 
 
   procedure DSPTITLE( TITLESTR: string);
   begin
-    MVCURSOR( 0, 1);
+    GotoXY( 0, 1);
     Write( '! CASTLE');
+    SPACES( 30 - Length( TITLESTR));
     Write( TITLESTR);
     Write( ' !')
   end;
@@ -395,7 +380,7 @@ procedure CASTLE;
   procedure DSPPARTY( TITLE: string);
   var CHARX : SmallInt;
   begin
-    MVCURSOR( 0, 0);
+    GotoXY( 0, 0);
     WriteLn( '+--------------------------------------+');
     DSPTITLE( TITLE);
     WriteLn;
@@ -406,52 +391,52 @@ procedure CASTLE;
       if CHARX < PARTYCNT then
         CHARINFO( CHARX)
       else
-        WriteLn( ' ');
+        WriteLn( Chr( 29));
     WriteLn( '+--------------------------------------+');
     Write( Chr( 11))
   end;
 
 
-  procedure GOBOLTAC;
+  function GOBOLTAC: Byte;
   begin
     DSPTITLE( 'SHOP');
     XGOTO  := XBOLTAC;
     XGOTO2 := XBOLTAC;
-    exit   { EXIT(CASTLE) }
+    GOBOLTAC := U_CASTLE                 { EXIT( CASTLE) }
   end;
 
 
-  procedure GOTEMPLE;
+  function GOTEMPLE: Byte;
   begin
     DSPTITLE( 'TEMPLE');
     XGOTO  := XCANT;
     XGOTO2 := XBOLTAC;
-    exit   { EXIT(CASTLE) }
+    GOTEMPLE := U_CASTLE                 { EXIT( CASTLE) }
   end;
 
 
-  procedure EXTCASTL;
+  function EXTCASTL: Byte;
   begin
     DSPTITLE( 'EXIT');
     XGOTO := XEDGTOWN;
-    exit   { EXIT(CASTLE) }
+    EXTCASTL := U_CASTLE                 { EXIT( CASTLE) }
   end;
 
 
   procedure P010A26;
   begin
-    MVCURSOR( 0, 13);
+    GotoXY( 0, 13);
     Write( Chr( 11));
     Write( '             ');
     WriteLn( 'YOU MAY GO TO:');
     WriteLn;
-    WriteLn( 'THE A)DVENTURER''S INN, G)ILGAMESH''');
+    WriteLn( 'THE A)DVENTURER''S INN, G)ILGAMESH''S');   { v3.2 WC004 }
     WriteLn( 'TAVERN, B)OLTAC''S TRADING POST, THE');
     WriteLn( 'TEMPLE OF C)ANT, OR THE E)DGE OF TOWN.')
   end;
 
 
-  procedure GILGAMSH;
+  function GILGAMSH: Byte;
   var PRTYALGN : TALIGN;
 
 
@@ -470,7 +455,7 @@ procedure CASTLE;
 
     procedure GILGMENU;
     begin
-      MVCURSOR( 0, 13);
+      GotoXY( 0, 13);
       Write( Chr( 11));
       Write( 'YOU MAY ');
       if PARTYCNT < 6 then
@@ -487,8 +472,8 @@ procedure CASTLE;
         end
       else
         begin
-          WriteLn( ' ');
-          WriteLn( ' ')
+          WriteLn( Chr( 29));
+          WriteLn( Chr( 29))
         end;
       WriteLn;
       WriteLn( 'OR PRESS [RETURN] TO LEAVE');
@@ -499,7 +484,7 @@ procedure CASTLE;
     procedure ADDPARTY;
     var CHARI : SmallInt; CHARNAME : string; TC_SLOT : ^TCHAR;
     begin
-      MVCURSOR( 0, 19);
+      GotoXY( 0, 19);
       Write( 'WHO WILL JOIN ? >');
       GETLINE;
       CHARNAME := GTSTRING;
@@ -509,7 +494,7 @@ procedure CASTLE;
       LOADTCHAR( CHARI, TC_SLOT^);
       while (CHARI < SCNTOC.RECPERDK[ ZCHAR]) and
             ((CHARNAME <> TC_SLOT.NAME) or
-             (TC_SLOT.STATUS = LOST)) do
+             (TC_SLOT^.STATUS = LOST)) do
         begin
           CHARI := CHARI + 1;
           LOADTCHAR( CHARI, TC_SLOT^)
@@ -519,15 +504,9 @@ procedure CASTLE;
       if TC_SLOT.INMAZE or (TC_SLOT.LOSTXYL[ 3] <> 0) then
         begin CENTSTR( '** OUT **'); exit end;
       if PRTYALGN <> NEUTRAL then
-        if TC_SLOT.ALIGN <> NEUTRAL then
-          if PRTYALGN <> TC_SLOT.ALIGN then
+        if TC_SLOT^.ALIGN <> NEUTRAL then
+          if PRTYALGN <> TC_SLOT^.ALIGN then
             begin CENTSTR( '** BAD ALIGNMENT **'); exit end;
-      MVCURSOR( 0, 20);
-      Write( 'ENTER PASSWORD  >');
-      GETPASS( CHARNAME);
-      MVCURSOR( 0, 21);
-      if CHARNAME <> TC_SLOT.PASSWORD then
-        begin CENTSTR( '** THATS NOT IT **'); exit end;
       CHARDISK[ PARTYCNT] := CHARI;
       TC_SLOT.INMAZE := true;
       SAVETCHAR( CHARI, TC_SLOT^);
@@ -567,30 +546,33 @@ procedure CASTLE;
     end;
 
 
-    procedure EXITCASL;
+    function EXITCASL: Byte;
     begin
+      EXITCASL := UNWNONE;
       LLBASE04 := Ord( INCHAR) - Ord( '1');
       if (LLBASE04 < 0) or (LLBASE04 >= PARTYCNT) then exit;
-      MAZELEV := -1;
-      XGOTO   := XINSPECT;
-      exit   { EXIT(CASTLE) — cascades through GILGAMSH }
+      MAZELEV  := -1;
+      XGOTO    := XINSPECT;
+      EXITCASL := U_CASTLE                 { EXIT( CASTLE) }
     end;
 
 
   begin  { GILGAMSH }
+    Result := UNWNONE;
     GETALIGN;
     DSPTITLE( 'TAVERN');
     repeat
-      CLRRECT( 0, 13, 40, 11);
+      UNITCLEAR( 1);
       GILGMENU;
-      MVCURSOR( 41, 0);
+      GotoXY( 41, 0);
       GETKEY;
       if INCHAR = Chr( CRETURN) then exit;
       case INCHAR of
         'A': if PARTYCNT < 6 then ADDPARTY;
         'R': if PARTYCNT > 0 then REMOVE;
         '1', '2', '3', '4', '5', '6':
-             if PARTYCNT > 0 then EXITCASL
+             if PARTYCNT > 0 then
+               if EXITCASL <> UNWNONE then exit( U_CASTLE)
       end
     until false
   end;  { GILGAMSH }
@@ -599,13 +581,14 @@ procedure CASTLE;
   procedure ADVNTINN;
 
 
-    procedure GETWHO;
+    function GETWHO: Byte;
     begin
+      GETWHO := UNWNONE;
       DSPTITLE( 'INN');
-      MVCURSOR( 0, 13);
+      GotoXY( 0, 13);
       Write( Chr( 11));
       _partyx := GETCHARX( false, 'WHO WILL STAY');
-      if _partyx < 0 then exit
+      if _partyx < 0 then GETWHO := U_ADVNTINN          { EXIT( ADVNTINN) }
     end;
 
 
@@ -613,7 +596,7 @@ procedure CASTLE;
     var TC : ^TCHAR;
     begin
       TC := CHARACTR[ _partyx];
-      MVCURSOR( 0, 13);
+      GotoXY( 0, 13);
       Write( Chr( 11));
       Write( '   WELCOME ');
       Write( TC.NAME);
@@ -624,6 +607,9 @@ procedure CASTLE;
       WriteLn( '[C] ECONOMY ROOMS. 50 GP/WEEK.');
       WriteLn( '[D] MERCHANT SUITES. 200 GP/WEEK.');
       WriteLn( '[E] ROYAL SUITES. 500 GP/WEEK.');
+      WriteLn;
+      WriteLn( '[G] POOL PARTY GOLD.');           { v3.2 WC040 }
+      WriteLn;
       Write(   '    OR [RETURN] TO LEAVE')
     end;
 
@@ -640,7 +626,7 @@ procedure CASTLE;
       WIREEXP( EXP2NEXT, EXP2BLK);
       LOADTEXP( EXP2NEXT);
       TC := CHARACTR[ _partyx];
-      CLSIDX := Ord( TCLASS( TC.XCLASS)) * 13;
+      CLSIDX := Ord( TCLASS( TC^.XCLASS)) * 13;
       if TC.CHARLEV <= 12 then
         begin
           PEXP     := EXP2NEXT[ CLSIDX + TC.CHARLEV];
@@ -651,7 +637,7 @@ procedure CASTLE;
           PEXP     := EXP2NEXT[ CLSIDX + 12];
           EXPNXTLV := PEXP^;
           PEXP     := EXP2NEXT[ CLSIDX];
-          for BIGLEV := 13 to TC.CHARLEV do
+          for BIGLEV := 13 to TC^.CHARLEV do
             ADDLONGS( EXPNXTLV, PEXP^)
         end;
       if TESTLONG( EXPNXTLV, TC.EXP) <= 0 then
@@ -674,7 +660,7 @@ procedure CASTLE;
       _gold4nap.XHIGH  := 0;
       _gold4nap.XMID   := 0;
       _gold4nap.XLOW   := GOLDAMT;
-      MVCURSOR( 0, 13);
+      GotoXY( 0, 13);
       Write( Chr( 11));
       TC := CHARACTR[ _partyx];
       if GOLDAMT > 0 then
@@ -689,16 +675,16 @@ procedure CASTLE;
         end;
       if Peek( $02FC) <> $FF then
         begin
-          MVCURSOR( 41, 0);
+          GotoXY( 41, 0);
           GETKEY
         end;
-      MVCURSOR( 0, 13);
+      GotoXY( 0, 13);
       Write( Chr( 11));
       CHNEWLEV;
       SETSPELS;
-      MVCURSOR( 0, 23);
+      GotoXY( 0, 23);
       Write( 'PRESS [RETURN] TO LEAVE');
-      MVCURSOR( 41, 0);
+      GotoXY( 41, 0);
       repeat GETKEY until INCHAR = Chr( CRETURN);
       INCHAR := Chr( 0)
     end;
@@ -706,12 +692,12 @@ procedure CASTLE;
 
   begin  { ADVNTINN }
     repeat
-      GETWHO;
+      if GETWHO = U_ADVNTINN then exit;
       if Byte( CHARACTR[ _partyx].STATUS) = 0 then   { OK = 0 }
         repeat
-          CLRRECT( 0, 13, 40, 11);
+          UNITCLEAR( 1);
           INNMENU;
-          MVCURSOR( 41, 0);
+          GotoXY( 41, 0);
           GETKEY;
           case Byte( Ord( INCHAR)) of
             65: TAKENAP(  0,   0);   { 'A' STABLES  }
@@ -719,6 +705,7 @@ procedure CASTLE;
             67: TAKENAP(  3,  50);   { 'C' ECONOMY  }
             68: TAKENAP(  7, 200);   { 'D' MERCHANT }
             69: TAKENAP( 10, 500);   { 'E' ROYAL    }
+            71: POOLALLG( _partyx);  { 'G' pool gold, v3.2 WC040 }
           end;
           CHARINFO( _partyx)
         until (INCHAR = Chr( CRETURN)) or
@@ -739,23 +726,23 @@ begin  { CASTLE }
     DSPPARTY( '');
   XGOTO2 := XGILGAMS;
   if XGOTO = XGILGAMS then
-    GILGAMSH;
+    if GILGAMSH = U_CASTLE then exit;
   repeat
     DSPTITLE( 'MARKET');
     P010A26;
     repeat
       repeat
-        MVCURSOR( 41, 0);
+        GotoXY( 41, 0);
         GETKEY
       until (INCHAR = 'A') or (INCHAR = 'G') or (INCHAR = 'B') or
             (INCHAR = 'C') or (INCHAR = 'E');
     until (PARTYCNT > 0) or (INCHAR = 'E') or (INCHAR = 'G');
-    case INCHAR of
-      'G': GILGAMSH;
+    case INCHAR of                     { only U_CASTLE can reach here }
+      'G': if GILGAMSH = U_CASTLE then exit;
       'A': ADVNTINN;
-      'C': GOTEMPLE;
-      'B': GOBOLTAC;
-      'E': EXTCASTL
+      'C': if GOTEMPLE = U_CASTLE then exit;
+      'B': if GOBOLTAC = U_CASTLE then exit;
+      'E': if EXTCASTL = U_CASTLE then exit
     end
   until false
 end;  { CASTLE }

@@ -1,24 +1,22 @@
 unit REWARDSUNIT;
 
-{ Source: apple/wiz1c/REWARDS + apple/wiz1c/REWARDS2
+{ Source: apple/Wizardry_v3-2/Wiz1C.DSK/REWARDS + REWARDS2 (v3.2)
 
   Translation notes:
-    - EXIT(REWARDS)   -> _done := true; exit (propagated up through callers)
-    - EXIT(ACHEST)    -> _exitachest := true; exit (flag visible in ACHEST scope)
-    - EXIT(GIVEEXP)   -> _exitgiveexp := true; exit (flag visible in GIVEEXP scope)
-    - EXIT(PROC)      -> exit (current procedure)
+    - EXIT(REWARDS / ACHEST / DISARMTR / GIVEEXP) past the current routine ->
+      unwind codes U_* (CONSTS); EXIT of the current routine -> exit.
+      CHSTGOLD is REWARDS' last call, so its own exit ends the segment.
     - MOVELEFT(IOCACHE[GETREC(...)], DEST, SZ) -> Move(IOCACHE[GETREC(...)], DEST, SZ)
     - MOVELEFT(SRC, IOCACHE[GETRECW(...)], SZ) -> Move(SRC, IOCACHE[GETRECW(...)], SZ)
     - MOVELEFT(IOCACHE, BATRESLT, SZ)          -> Move(IOCACHE[0], BATRESLT, SZ)
     - CHARACTR[X].FIELD -> TC := CHARACTR[X]; TC.FIELD (for all fields)
     - WITH CHARACTR[X].POSS DO -> TC := CHARACTR[X]; TC.POSS.FIELD / PP := TC.POSS.POSSESS[I]
     - POSSESS[I].FIELD -> PP := POSS.POSSESS[I]; PP.FIELD (^TPOSSESS pointer)
-    - TCHAR.SPELLSKN[I] -> TC.SPELLSKN^[I]  (^TSPELLSKN needs explicit ^)
+    - TCHAR.SPELLSKN[I] -> TC^.SPELLSKN^[I]  (^TSPELLSKN needs explicit ^)
     - CLASS -> XCLASS
     - LOSTXYL.POISNAMT[1] -> LOSTXYL[1]
     - EXPTABLE[CLASS][LVL] -> EXPTABLE[Ord(XCLASS)*13 + LVL]^
-    - UNITCLEAR(1) -> CLEARPIC
-    - PIC2SCRN stubbed  (Apple-specific video RAM addressing, not applicable to Atari)
+    - PIC2SCRN -> HIUTIL PICTOSCR (the Atari portrait layout)
     - TREWARDX.REWDCALC variant record -> flat REWDCALC: array[0..6] of SmallInt
         GOLD: TRIES=0 AVEAMT=1 MINADD=2 MULTX=3 TRIES2=4 AVEAMT2=5 MINADD2=6
         ITEM: MININDX=0 MFACTOR=1 MAXTIMES=2 RANGE=3 PERCBIGR=4
@@ -29,7 +27,7 @@ unit REWARDSUNIT;
 
 interface
 
-uses TYPES, CONSTS, GLOBALS, UTIL, crt;
+uses TYPES, CONSTS, GLOBALS, UTIL, SCREEN;
 
 procedure REWARDS;
 
@@ -57,8 +55,13 @@ type
 
 { ── Unit-level state ── }
 
+const
+  U_REWARDS  = $01;       { unwind targets: AP P010D01, P010D08, P010D17, }
+  U_ACHEST   = $08;       {   P010D1F                                     }
+  U_DISARMTR = $17;
+  U_GIVEEXP  = $1F;
+
 var
-  _done    : Boolean;
   EXPPERCH : TWIZLONG;
   ALIVECNT : SmallInt;
   ONEORTWO : SmallInt;
@@ -68,7 +71,7 @@ var
 { Enum assignment helper — required because MP re-types enum constants as Byte
   inside deeply nested procedures (bug4). }
 procedure SETSTAT_R( TC: PTCHAR; ST: TSTATUS);
-begin TC.STATUS := ST end;
+begin TC^.STATUS := TSTATUS( Byte( ST)) end;   { TC^: mpbugs/bug15 }
 
 
 { ══════════════════════════════════════════════════════════════════════════════
@@ -79,14 +82,13 @@ procedure REWARDS;
 
 
   { ── PIC2SCRN ── }
-  { BUFFERI = GETREC(ZSPCCHRS, INDEX, 512) return value = IOCACHE offset.
-    IOCACHE[BUFFERI..+499]: Atari ANTIC-E portrait, 50 rows x 10 bytes.
-    Row layout: 9 data bytes (36 Mode-E 2bpp pixels = ~72 TV dots) + 1 zero pad.
-    Blit to SCRNBUF rows 0..49, columns 0..8 (top-left portrait area). }
+  { BUFFERI = GETREC( ZSPCCHRS, INDEX, 512), the picture's IOCACHE offset
+    (18: treasure chest, 19: gold). }
   procedure PIC2SCRN( BUFFERI: SmallInt);
-  { Atari stub — portraits not yet displayed. Mad Pascal compiler crashes on any loop
-    in this procedure context (rewardsunit at procedure-level nesting). }
   begin
+    Poke( $02C4, Ord( IOCACHE[ BUFFERI + 500]));    { COLOR0, COLOR1: the }
+    Poke( $02C5, Ord( IOCACHE[ BUFFERI + 501]));    {   picture's hues    }
+    PICTOSCR( BUFFERI)
   end;
 
 
@@ -201,19 +203,19 @@ procedure REWARDS;
           PRW.REWARDXX[I] := Pointer( Word( @RWBLK) + I * SizeOf( TREWARDX));
           RX := PRW.REWARDXX[I];
           J  := B + 6 + (I - 1) * 18;
-          Move( IOCACHE[J],     RX.REWDPERC,    2);
-          Move( IOCACHE[J + 2], RX.BITEM,        2);
+          Move( IOCACHE[J],     RX^.REWDPERC,    2);
+          Move( IOCACHE[J + 2], RX^.BITEM,        2);
           Move( IOCACHE[J + 4], RX.REWDCALC[0], 14)
         end
     end;
 
 
     { ── ACHEST ── }
-    procedure ACHEST;
+    function ACHEST: Byte;                     { UNWNONE or U_REWARDS }
     var
       WHOTRIED    : array[ 0..5] of Boolean;
       TRAPTYPE    : SmallInt;
-      _exitachest : Boolean;   { set by nested procs for EXIT(ACHEST) }
+      U           : Byte;
 
 
       { ── GTTRAPTY ── }
@@ -251,9 +253,9 @@ procedure REWARDS;
 
 
       { ── EXITRWDS ── }
-      procedure EXITRWDS;
+      function EXITRWDS: Byte;
       begin
-        _done := true; exit   { EXIT(REWARDS) }
+        EXITRWDS := U_REWARDS                           { EXIT( REWARDS) }
       end;
 
 
@@ -280,19 +282,20 @@ procedure REWARDS;
       end;
 
 
-      { ── DOTRAPDM ── }
-      procedure DOTRAPDM;
+      { ── DOTRAPDM: always unwinds ── }
+      function DOTRAPDM: Byte;                 { U_ACHEST or U_REWARDS }
       var
         CHARX : SmallInt;
         TC_D  : PTCHAR;
 
 
         { ── HPDAMAGE ── }
-        procedure HPDAMAGE( CHARXHIT: SmallInt; HITCNT: SmallInt; HITDAM: SmallInt);
+        function HPDAMAGE( CHARXHIT: SmallInt; HITCNT: SmallInt; HITDAM: SmallInt): Byte;
         var
           TOTDAM : SmallInt;
           TC_H   : PTCHAR;
         begin
+          HPDAMAGE := UNWNONE;
           TOTDAM := 0;
           while HITCNT > 0 do
             begin
@@ -312,8 +315,8 @@ procedure REWARDS;
               ALIVECNT := ALIVECNT - 1;
               if ALIVECNT = 0 then
                 begin
-                  XGOTO := XCEMETRY;
-                  _done := true; exit   { EXIT(REWARDS) }
+                  XGOTO    := XCEMETRY;
+                  HPDAMAGE := U_REWARDS                 { EXIT( REWARDS) }
                 end
             end
         end;
@@ -328,12 +331,12 @@ procedure REWARDS;
 
           procedure ISSTONED;
           begin
-            if Byte( TC_PM.STATUS) < Byte( STONED) then SETSTAT_R( TC_PM, STONED)
+            if Byte( TC_PM^.STATUS) < Byte( STONED) then SETSTAT_R( TC_PM, STONED)
           end;
 
           procedure ISPLYZE;
           begin
-            if Byte( TC_PM.STATUS) < Byte( PLYZE) then SETSTAT_R( TC_PM, PLYZE)
+            if Byte( TC_PM^.STATUS) < Byte( PLYZE) then SETSTAT_R( TC_PM, PLYZE)
           end;
 
         begin
@@ -341,7 +344,7 @@ procedure REWARDS;
             begin
               TC_PM    := CHARACTR[ CHARPM];
               PLYZSTON := Random( 20) < TC_PM.LUCKSKIL[ 4];
-              case Byte( TC_PM.XCLASS) of
+              case Byte( TC_PM^.XCLASS) of
                 Byte( MAGE):
                   if BMAGEDAM then
                     if PLYZSTON then ISPLYZE else ISSTONED;
@@ -360,41 +363,38 @@ procedure REWARDS;
 
 
         { ── TYPE3DAM ── }
-        procedure TYPE3DAM;
+        function TYPE3DAM: Byte;
 
-          procedure HPDAMALL( CHANCHIT: SmallInt; HITCNT: SmallInt; HITDAM: SmallInt);
+          function HPDAMALL( CHANCHIT: SmallInt; HITCNT: SmallInt; HITDAM: SmallInt): Byte;
           var
             CHARXHIT : SmallInt;
           begin
+            HPDAMALL := UNWNONE;
             for CHARXHIT := 0 to PARTYCNT - 1 do
-              begin
-                if _done then break;
+              if Random( 100) < CHANCHIT then
+                begin
+                  if HPDAMAGE( CHARXHIT, HITCNT, HITDAM) <> UNWNONE then exit( U_REWARDS)
+                end
+              else
                 if Random( 100) < CHANCHIT then
-                  begin
-                    HPDAMAGE( CHARXHIT, HITCNT, HITDAM);
-                    if _done then break
-                  end
-                else
-                  if Random( 100) < CHANCHIT then
-                    begin
-                      HPDAMAGE( CHARXHIT, HITCNT, (HITDAM div 2) + 1);
-                      if _done then break
-                    end
-              end
+                  if HPDAMAGE( CHARXHIT, HITCNT, (HITDAM div 2) + 1) <> UNWNONE then
+                    exit( U_REWARDS)
           end;
 
         begin  { TYPE3DAM }
+          Result := UNWNONE;
           case Byte( TRAP3TYP) of
-            0: HPDAMAGE( CHRXCHST, MAZELEV, 8);   { CROSSBOW BOLT }
-            1: HPDAMALL( 50, MAZELEV, 8);           { EXPLODING BOX }
-            2: HPDAMALL( 70, MAZELEV, 6);           { SPLINTERS     }
-            3: HPDAMALL( 30, MAZELEV, 12);          { BLADES        }
+            0: Result := HPDAMAGE( CHRXCHST, MAZELEV, 8);   { CROSSBOW BOLT }
+            1: Result := HPDAMALL( 50, MAZELEV, 8);           { EXPLODING BOX }
+            2: Result := HPDAMALL( 70, MAZELEV, 6);           { SPLINTERS     }
+            3: Result := HPDAMALL( 30, MAZELEV, 12);          { BLADES        }
             4: begin TC_D := CHARACTR[ CHRXCHST]; SETSTAT_R( TC_D, PLYZE); end; { STUNNER }
           end
         end;
 
 
       begin  { DOTRAPDM }
+        Result := U_ACHEST;
         CLRRECT( 13, 8, 26, 2);
         MVCURSOR( 13, 8);
         if TRAPTYPE <> 0 then
@@ -416,14 +416,14 @@ procedure REWARDS;
           2:  for CHARX := 0 to PARTYCNT - 1 do   { GAS BOMB }
                 begin
                   TC_D := CHARACTR[ CHARX];
-                  if Random( 20) < TC_D.LUCKSKIL[ 3] then
+                  if Random( 20) < TC_D.LUCKSKIL[ 2] then   { v3.2 WC016 }
                     begin
                       TC_D := CHARACTR[ CHARX];
                       TC_D.LOSTXYL[ 1] := 1
                     end
                 end;
 
-          3:  begin TYPE3DAM; if _done then exit; end;  { TYPE3 (crossbow/box/etc.) }
+          3:  if TYPE3DAM = U_REWARDS then exit( U_REWARDS);   { crossbow/box/etc. }
 
           4:  begin   { TELEPORTER }
                 MAZEX    := Random( 20);
@@ -431,16 +431,16 @@ procedure REWARDS;
                 DIRECTIO := Random( 4)
               end;
 
-          5:  begin ANTIPM( true);  if _done then exit; end;  { ANTI-MAGE   }
-          6:  begin ANTIPM( false); if _done then exit; end;  { ANTI-PRIEST }
+          5:  ANTIPM( true);                            { ANTI-MAGE   }
+          6:  ANTIPM( false);                           { ANTI-PRIEST }
 
           7:  begin   { ALARM }
                 CHSTALRM := 1;
-                _done := true; exit   { EXIT(REWARDS) }
+                exit( U_REWARDS)                        { EXIT( REWARDS) }
               end;
         end;
 
-        _exitachest := true   { EXIT(ACHEST) — unconditional after trap processing }
+        Result := U_ACHEST                              { EXIT( ACHEST) }
       end;
 
 
@@ -474,12 +474,13 @@ procedure REWARDS;
 
 
       { ── INSPCHST ── }
-      procedure INSPCHST;
+      function INSPCHST: Byte;
       var
         CHNCGOOD : SmallInt;
         CHARINSP : SmallInt;
         TC_I     : PTCHAR;
       begin
+        INSPCHST := UNWNONE;
         CLRRECT( 13, 8, 26, 2);
         MVCURSOR( 15, 8);
         PRINTSTR( 'WHO (#) WILL INSPECT?');
@@ -487,7 +488,7 @@ procedure REWARDS;
         CHARINSP := Ord( INCHAR) - Ord( '0') - 1;
         if (CHARINSP < 0) or (CHARINSP >= PARTYCNT) then exit;
         TC_I := CHARACTR[ CHARINSP];
-        if TC_I.STATUS <> OK then exit;
+        if TC_I^.STATUS <> OK then exit;
         if WHOTRIED[ CHARINSP] then
           begin
             CLRRECT( 13, 8, 26, 1);
@@ -498,9 +499,9 @@ procedure REWARDS;
           end;
         WHOTRIED[ CHARINSP] := true;
         CHNCGOOD             := TC_I.ATTRIB[ AGILITY];
-        if TC_I.XCLASS = THIEF then
+        if TC_I^.XCLASS = THIEF then
           CHNCGOOD := CHNCGOOD * 6
-        else if TC_I.XCLASS = NINJA then
+        else if TC_I^.XCLASS = NINJA then
           CHNCGOOD := CHNCGOOD * 4;
         if CHNCGOOD > 95 then CHNCGOOD := 95;
         CHRXCHST := CHARINSP;
@@ -508,7 +509,7 @@ procedure REWARDS;
           PRTRAP
         else
           if Random( 20) > TC_I.ATTRIB[ AGILITY] then
-            begin DOTRAPDM; if _done then exit; end
+            INSPCHST := DOTRAPDM
           else
             PRRNDTRP
       end;
@@ -527,10 +528,10 @@ procedure REWARDS;
         CHRXCHST := Ord( INCHAR) - Ord( '0') - 1;
         if (CHRXCHST < 0) or (CHRXCHST >= PARTYCNT) then exit;
         TC_C := CHARACTR[ CHRXCHST];
-        SKN  := TC_C.SPELLSKN;
+        SKN  := TC_C^.SPELLSKN;
         if not SKN^[ 28] then exit;
         if TC_C.PRIESTSP[ 2] = 0 then exit;
-        if TC_C.STATUS <> OK then exit;
+        if TC_C^.STATUS <> OK then exit;
         TC_C.PRIESTSP[ 2] := TC_C.PRIESTSP[ 2] - 1;
         if Random( 100) < 95 then PRTRAP
         else                      PRRNDTRP
@@ -538,13 +539,13 @@ procedure REWARDS;
 
 
       { ── DISARMTR ── }
-      procedure DISARMTR;
+      function DISARMTR: Byte;                 { UNWNONE, U_ACHEST or U_REWARDS }
       var
         TRAPSTR       : string[ 24];
-        _exitachest_d : Boolean;   { propagates EXIT(ACHEST) from DISARM }
         TC_DA         : PTCHAR;
+        U             : Byte;
 
-        procedure DISARM;
+        function DISARM: Byte;
         begin
           CLRRECT( 13, 8, 26, 2);
           MVCURSOR( 18, 8);
@@ -552,32 +553,31 @@ procedure REWARDS;
           if Random( 70) <
              (  TC_DA.CHARLEV
               - MAZELEV
-              + (50 * Ord(   (TC_DA.XCLASS = THIEF)
-                          or (TC_DA.XCLASS = NINJA)))
+              + (50 * Ord(   (TC_DA^.XCLASS = THIEF)
+                          or (TC_DA^.XCLASS = NINJA)))
              ) then
             begin
               PRINTSTR( 'YOU DISARMED IT!');
               PAUSE2;
-              _exitachest_d := true; exit   { EXIT(ACHEST) }
+              DISARM := U_ACHEST                        { EXIT( ACHEST) }
             end
           else
             if Random( 20) < TC_DA.ATTRIB[ AGILITY] then
               begin
                 PRINTSTR( 'DISARM FAILED!!');
                 PAUSE2;
-                exit   { EXIT(DISARMTR) }
+                DISARM := U_DISARMTR                    { EXIT( DISARMTR) }
               end
             else
               begin
                 PRINTSTR( 'YOU SET IT OFF!');
                 PAUSE2;
-                DOTRAPDM;
-                if _done then exit
+                DISARM := DOTRAPDM
               end
         end;
 
       begin  { DISARMTR }
-        _exitachest_d := false;
+        Result := UNWNONE;
         CLRRECT( 13, 8, 26, 2);
         MVCURSOR( 16, 8);
         PRINTSTR( 'WHO (#) WILL DISARM?');
@@ -585,38 +585,40 @@ procedure REWARDS;
         CHRXCHST := Ord( INCHAR) - Ord( '0') - 1;
         if (CHRXCHST < 0) or (CHRXCHST >= PARTYCNT) then exit;
         TC_DA := CHARACTR[ CHRXCHST];
-        if TC_DA.STATUS <> OK then exit;
+        if TC_DA^.STATUS <> OK then exit;
         CLRRECT( 13, 8, 26, 2);
         MVCURSOR( 13, 8);
         PRINTSTR( 'WHAT TRAP >');
         GETSTR( TRAPSTR, 24, 8);
-        if      (TRAPSTR = 'POISON NEEDLE') and (TRAPTYPE = 1) then DISARM
-        else if (TRAPSTR = 'GAS BOMB')      and (TRAPTYPE = 2) then DISARM
+        U := UNWNONE;
+        if      (TRAPSTR = 'POISON NEEDLE') and (TRAPTYPE = 1) then U := DISARM
+        else if (TRAPSTR = 'GAS BOMB')      and (TRAPTYPE = 2) then U := DISARM
         else if TRAPTYPE = 3 then
           begin
             case Byte( TRAP3TYP) of
-              0: if TRAPSTR = 'CROSSBOW BOLT' then DISARM;
-              1: if TRAPSTR = 'EXPLODING BOX' then DISARM;
-              2: if TRAPSTR = 'SPLINTERS'     then DISARM;
-              3: if TRAPSTR = 'BLADES'        then DISARM;
-              4: if TRAPSTR = 'STUNNER'       then DISARM;
+              0: if TRAPSTR = 'CROSSBOW BOLT' then U := DISARM;
+              1: if TRAPSTR = 'EXPLODING BOX' then U := DISARM;
+              2: if TRAPSTR = 'SPLINTERS'     then U := DISARM;
+              3: if TRAPSTR = 'BLADES'        then U := DISARM;
+              4: if TRAPSTR = 'STUNNER'       then U := DISARM;
             end;
-            if not _exitachest_d and not _done then DOTRAPDM  { AP comment: (* DOTRAPDM *) }
+            if U = UNWNONE then U := DOTRAPDM          { v3.2 WC037 }
           end
-        else if (TRAPSTR = 'TELEPORTER')  and (TRAPTYPE = 4) then DISARM
-        else if (TRAPSTR = 'ANTI-MAGE')   and (TRAPTYPE = 5) then DISARM
-        else if (TRAPSTR = 'ANTI-PRIEST') and (TRAPTYPE = 6) then DISARM
-        else if (TRAPSTR = 'ALARM')       and (TRAPTYPE = 7) then DISARM
-        else DOTRAPDM;
-        if _exitachest_d then _exitachest := true
+        else if (TRAPSTR = 'TELEPORTER')  and (TRAPTYPE = 4) then U := DISARM
+        else if (TRAPSTR = 'ANTI-MAGE')   and (TRAPTYPE = 5) then U := DISARM
+        else if (TRAPSTR = 'ANTI-PRIEST') and (TRAPTYPE = 6) then U := DISARM
+        else if (TRAPSTR = 'ALARM')       and (TRAPTYPE = 7) then U := DISARM
+        else U := DOTRAPDM;
+        if U <> U_DISARMTR then Result := U               { U_DISARMTR ends here }
       end;
 
 
       { ── OPENCHST ── }
-      procedure OPENCHST;
+      function OPENCHST: Byte;
       var
         TC_O : PTCHAR;
       begin
+        OPENCHST := UNWNONE;
         CLRRECT( 13, 8, 26, 2);
         MVCURSOR( 17, 8);
         PRINTSTR( 'WHO (#) WILL OPEN?');
@@ -624,16 +626,15 @@ procedure REWARDS;
         CHRXCHST := Ord( INCHAR) - Ord( '0') - 1;
         if (CHRXCHST < 0) or (CHRXCHST >= PARTYCNT) then exit;
         TC_O := CHARACTR[ CHRXCHST];
-        if TC_O.STATUS <> OK then exit;
-        if TRAPTYPE = 0 then begin _exitachest := true; exit; end;
-        if Random( 1000) < TC_O.CHARLEV then begin _exitachest := true; exit; end;
-        DOTRAPDM;
-        if _done then exit
+        if TC_O^.STATUS <> OK then exit;
+        if TRAPTYPE = 0 then exit( U_ACHEST);           { EXIT( ACHEST) }
+        if Random( 1000) < TC_O.CHARLEV then exit( U_ACHEST);
+        OPENCHST := DOTRAPDM
       end;
 
 
     begin  { ACHEST }
-      _exitachest := false;
+      Result := UNWNONE;
       PIC2SCRN( GETREC( ZSPCCHRS, 18, 512));
       FillChar( WHOTRIED, SizeOf( WHOTRIED), 0);
       GTTRAPTY;
@@ -647,12 +648,15 @@ procedure REWARDS;
         MVCURSOR( 13, 9);
         PRINTSTR( 'I)NSPECT  D)ISARM');
         GETKEY;
-        if      INCHAR = 'O' then begin OPENCHST; if _done then break; end
-        else if INCHAR = 'L' then EXITRWDS
-        else if INCHAR = 'I' then begin INSPCHST; if _done then break; end
+        U := UNWNONE;
+        if      INCHAR = 'O' then U := OPENCHST
+        else if INCHAR = 'L' then U := EXITRWDS
+        else if INCHAR = 'I' then U := INSPCHST
         else if INCHAR = 'C' then CALFOCH
-        else if INCHAR = 'D' then begin DISARMTR; if _done then break; end
-      until _done or _exitachest
+        else if INCHAR = 'D' then U := DISARMTR;
+        if U = U_REWARDS then exit( U_REWARDS);
+        if U = U_ACHEST then exit                       { U_ACHEST ends here }
+      until false
     end;
 
 
@@ -696,23 +700,36 @@ procedure REWARDS;
 
       procedure ITEMREWD;
       var
-        TC_IR : PTCHAR;
+        TC_IR    : PTCHAR;
+        HASROOM  : SmallInt;
+        CHARYYYY : SmallInt;
       begin
-        CHARXXXX := Random( PARTYCNT);
-        TC_IR    := CHARACTR[ CHARXXXX];
-        while TC_IR.STATUS <> OK do
+        HASROOM := 0;                                   { v3.2 WC033 }
+        for CHARYYYY := 0 to PARTYCNT - 1 do
           begin
-            CHARXXXX := (CHARXXXX + 1) mod PARTYCNT;
-            TC_IR    := CHARACTR[ CHARXXXX]
+            TC_IR := CHARACTR[ CHARYYYY];
+            if TC_IR.POSS.POSSCNT < 8 then
+              begin
+                HASROOM  := 1;
+                CHARXXXX := CHARYYYY
+              end
           end;
-        if TC_IR.POSS.POSSCNT = 8 then exit;
+        if HASROOM = 0 then
+          begin
+            MVCURSOR( 1, 12);
+            PRINTSTR( 'PARTY INVENTORY FULL !');
+            MVCURSOR( 1, 13);
+            PRINTSTR( 'TREASURE LOST !');
+            PAUSE2;
+            exit
+          end;
         CHARIIII := 0;
         { REWDCALC[4]=PERCBIGR, [2]=MAXTIMES, [0]=MININDX, [3]=RANGE, [1]=MFACTOR }
         while (CALCULAT( 1, 100, 1) < REWARDM.REWDCALC[ 4]) and
               (CHARIIII < REWARDM.REWDCALC[ 2]) do
           CHARIIII := CHARIIII + 1;
         ITEMINDX := REWARDM.REWDCALC[ 0]
-                  + CALCULAT( 1, REWARDM.REWDCALC[ 3], 1)
+                  + Random( REWARDM.REWDCALC[ 3] + 1)   { v3.2 WC022 }
                   + (REWARDM.REWDCALC[ 1] * CHARIIII);
         FOUNDITM( CHARXXXX, CHARIIII, ITEMINDX);
         PAUSE2
@@ -739,7 +756,7 @@ procedure REWARDS;
       for INDX := 0 to PARTYCNT - 1 do
         begin
           TC_G := CHARACTR[ INDX];
-          if TC_G.STATUS = OK then ADDLONGS( TC_G.GOLD, GOLD2ONE)
+          if TC_G^.STATUS = OK then ADDLONGS( TC_G.GOLD, GOLD2ONE)
         end;
       PAUSE2
     end;
@@ -749,11 +766,10 @@ procedure REWARDS;
     FillChar( GOLD2ONE, SizeOf( GOLD2ONE), 0);
     ENMYREWD;
     RDREWARD;
-    CLEARPIC;
+    UNITCLEAR( 1);
     if REWARDZ.BCHEST and (CHSTALRM <> 1) then
       begin
-        ACHEST;
-        if _done then exit;
+        if ACHEST = U_REWARDS then exit;                { CHSTGOLD is REWARDS' last call }
         CLRRECT( 3, 5, 9, 5)
       end
     else
@@ -764,40 +780,40 @@ procedure REWARDS;
       begin
         PRWZ := @REWARDZ;
         RXZ  := PRWZ.REWARDXX[ INDX];
-        GETREWRD( RXZ^);
-        if _done then exit
+        GETREWRD( RXZ^)
       end;
     GIVEGOLD
   end;
 
 
   { ── GIVEEXP ── }
-  procedure GIVEEXP;
+  function GIVEEXP: Byte;                      { UNWNONE or U_REWARDS }
   var
     WEPSTY3I     : SmallInt;
     SPPCI        : SmallInt;
     BATRESLT     : TBATRSLT;
     CHARXXX      : SmallInt;
     KILLEXP      : TWIZLONG;
-    _exitgiveexp : Boolean;   { set by CHKDRAIN for EXIT(GIVEEXP) }
+    U            : Byte;
     TC_GE        : PTCHAR;    { local pointer for GIVEEXP's own loops }
 
 
     { ── CNTALIVE ── }
-    procedure CNTALIVE;
+    function CNTALIVE: Byte;
     var
       TC_CN : PTCHAR;
     begin
+      CNTALIVE := UNWNONE;
       ALIVECNT := 0;
       for LLBASE04 := 0 to PARTYCNT - 1 do
         begin
           TC_CN := CHARACTR[ LLBASE04];
-          if TC_CN.STATUS = OK then ALIVECNT := ALIVECNT + 1
+          if TC_CN^.STATUS = OK then ALIVECNT := ALIVECNT + 1
         end;
       if ALIVECNT = 0 then
         begin
-          XGOTO := XCEMETRY;
-          _done := true; exit   { EXIT(REWARDS) }
+          XGOTO    := XCEMETRY;
+          CNTALIVE := U_REWARDS                         { EXIT( REWARDS) }
         end
     end;
 
@@ -884,12 +900,13 @@ procedure REWARDS;
 
 
     { ── CHKDRAIN ── }
-    procedure CHKDRAIN;
+    function CHKDRAIN: Byte;                 { UNWNONE, U_GIVEEXP or U_REWARDS }
     var
       EXPTABLE : TEXP;
       EXPBLK   : TEXPBLK;     { EXPTABLE's wired entries }
       PEXP     : ^TWIZLONG;   { EXPTABLE[]^ only via a pointer (mpbugs/bug10) }
       TC_CK    : PTCHAR;
+      CKCLASS  : TCLASS;      { TC_CK^.XCLASS as an argument is rejected }
 
       { ── DROPLEVL ── }
       procedure DROPLEVL( var CHAREXP: TWIZLONG;
@@ -925,6 +942,7 @@ procedure REWARDS;
       end;
 
     begin  { CHKDRAIN }
+      Result := UNWNONE;
       WIREEXP( EXPTABLE, EXPBLK);
       LOADTEXP( EXPTABLE);
       KILLEXP.XHIGH := 0;
@@ -939,29 +957,30 @@ procedure REWARDS;
               TC_CK := CHARACTR[ CHARXXX];
               PRINTSTR( TC_CK.NAME);
               PRINTSTR( ' WAS DRAINED!');
-              DROPLEVL( TC_CK.EXP, TC_CK.CHARLEV, TC_CK.XCLASS)
+              CKCLASS := TC_CK^.XCLASS;
+              DROPLEVL( TC_CK.EXP, TC_CK.CHARLEV, CKCLASS)
             end
         end;
       CLRRECT( 1, 11, 38, 4);
-      if XGOTO = XREWARD2 then begin _exitgiveexp := true; exit; end;  { EXIT(GIVEEXP) }
+      if XGOTO = XREWARD2 then exit( U_GIVEEXP);        { EXIT( GIVEEXP) }
       for CHARXXX := 0 to PARTYCNT - 1 do
         begin
           TC_CK := CHARACTR[ CHARXXX];
-          if TC_CK.STATUS = OK then exit  { EXIT(CHKDRAIN) — at least one alive }
+          if TC_CK^.STATUS = OK then exit  { EXIT(CHKDRAIN) — at least one alive }
         end;
-      XGOTO := XCEMETRY;
-      _done := true; exit   { EXIT(REWARDS) — nobody survived }
+      XGOTO  := XCEMETRY;
+      Result := U_REWARDS                               { EXIT( REWARDS) }
     end;
 
 
   begin  { GIVEEXP }
-    _exitgiveexp := false;
+    Result := UNWNONE;
     Move( IOCACHE[ 0], BATRESLT, SizeOf( TBATRSLT));
     CACHEWRI := false;
-    CNTALIVE;
-    if _done then exit;
-    CHKDRAIN;
-    if _done or _exitgiveexp then exit;
+    if CNTALIVE = U_REWARDS then exit( U_REWARDS);
+    U := CHKDRAIN;
+    if U = U_REWARDS then exit( U_REWARDS);
+    if U = U_GIVEEXP then exit;                         { U_GIVEEXP ends here }
     CALC1EXP;
     CLRRECT( 13, 1, 26, 4);
     MVCURSOR( 13, 1);
@@ -975,25 +994,22 @@ procedure REWARDS;
     for LLBASE04 := 0 to PARTYCNT - 1 do
       begin
         TC_GE := CHARACTR[ LLBASE04];
-        if TC_GE.STATUS = OK then ADDLONGS( TC_GE.EXP, EXPPERCH)
+        if TC_GE^.STATUS = OK then ADDLONGS( TC_GE.EXP, EXPPERCH)
       end
   end;
 
 
 begin  { REWARDS }
-  _done := false;
   case XGOTO of
     XREWARD:
       begin
         XGOTO := XRUNNER;
-        GIVEEXP;
-        if _done then exit;
+        if GIVEEXP = U_REWARDS then exit;
         CHSTGOLD
       end;
     XREWARD2:
       begin
-        GIVEEXP;
-        if _done then exit;
+        if GIVEEXP = U_REWARDS then exit;
         LLBASE04 := 0;
         XGOTO    := XSCNMSG
       end
