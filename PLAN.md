@@ -150,7 +150,10 @@ Repros for each are in `../mpbugs/`.
   - `test\keys.ps1`: boot, create fighter A, add him to the party, enter the maze, decline the stairs.
   - `test\demo.ps1`: adds a walk, a forced encounter (GLOBALS CHSTALRM $9012 := 1), fight rounds, the rewards and a walk.
   - Both take `-Scale` to shorten the gaps between keys.
-  - With fixed key frames a run is deterministic.
+  - With fixed key frames a run is deterministic. Changing any timing (`-Scale`, or a rebuild that moves code) changes the random numbers, so the encounter and fight differ.
+  - At `-Scale 0.75` the game keeps up with every key: the demo is about 15,750 frames instead of 21,000. One of two runs stalled after the maze walk (frame ~12,120: the remaining keys never fired) and the rerun was clean, so the cause is unknown.
+  - For tests whose outcome varies (fights), read the state from a dump (`DONEFIGH`, `XGOTO`) between steps rather than relying on fixed round counts.
+  - "Invalid breakpoint number: 0" in `run.log` is harmless: the first key's breakpoint fires twice.
 - **Recording:** `test\altdemo.ps1` opens the same demo visibly and paused, ready to record with File › Record Video, then F5.
 - **Key codes (KBCODE):**
 
