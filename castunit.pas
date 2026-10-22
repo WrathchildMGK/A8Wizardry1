@@ -103,7 +103,7 @@ var
     if GROUPI <> 0 then
       begin
         XBTB := XBRC^.B;
-        if XBTB.UNAFFCT > (Random(100)) then
+        if XBTB.UNAFFCT > (RNDN(100)) then
           DAMPTS := 0
       end;
     if DAMPTS = 0 then
@@ -139,14 +139,14 @@ var
     XBRC := BATTLERC[ GROUPI];
     XBRA := XBRC^.A;
     PT04 := XBRA.TEMP04[ CHARI];
-    if (Random(100)) < ISNOTCHN then
+    if (RNDN(100)) < ISNOTCHN then
       PRINTSTR( 'IS NOT ')
     else
       begin
         PRINTSTR( 'IS ');
         case Byte( DAMTYPE) of
           0: SETXSTATUS_CB( PT04, PLYZE);             { v3.2 WC014 }
-          1: PT04.INAUDCNT := (Random(4)) + 2;
+          1: PT04.INAUDCNT := (RNDN(4)) + 2;
           2: begin
                SETXSTATUS_CB( PT04, DEAD);
                PT04.HPLEFT  := 0
@@ -167,7 +167,7 @@ var
     POINTS := 0;
     while HITS > 0 do
       begin
-        POINTS := POINTS + (Random(HITRANGE)) + 1;
+        POINTS := POINTS + (RNDN(HITRANGE)) + 1;
         HITS   := HITS - 1
       end;
     CALCPTS := POINTS + HITMIN
@@ -227,7 +227,7 @@ var
         XBRC := BATTLERC[ GROUPI];
         XBTB := XBRC^.B;
         if XBTB.UNAFFCT > 0 then
-          if (Random(100)) < XBTB.UNAFFCT then
+          if (RNDN(100)) < XBTB.UNAFFCT then
             POINTS := 0
       end;
     UNAFFECT( GROUPI, CHARI, POINTS)
@@ -379,7 +379,7 @@ var
           for TEMP2 := 0 to XBRA.ALIVECNT - 1 do
             begin
               PT04L := XBRA.TEMP04[ TEMP2];
-              PT04L.INAUDCNT := 5 + (Random(5))
+              PT04L.INAUDCNT := 5 + (RNDN(5))
             end
         end
     end;
@@ -456,7 +456,7 @@ var
       PRINTSTR( 'BUT HIS SPELL BOOKS ARE MANGLED!');
       SKNS := CHARACTR[ TEMP1].SPELLSKN;
       for SPELLI := 1 to 50 do
-        if (Random(100)) > 50 then
+        if (RNDN(100)) > 50 then
           SKNS^[ SPELLI] := false
     end;
 
@@ -475,7 +475,7 @@ var
       end;
     CHARACTR[ BATI].CHARLEV := CHARACTR[ BATI].CHARLEV - 1;
     DRAINED[ BATI] := true;
-    case Byte( Random( 3 * MAHAMFLG)) of             { v3.2 WC006 }
+    case Byte( RNDN( 3 * MAHAMFLG)) of             { v3.2 WC006 }
         0,  1,  2,  3,  4,  5: HAMCURE;
             7,  8,  9, 10, 11: HAMSILEN;
                12, 13, 22, 23: HAMMAGIC;
@@ -485,7 +485,7 @@ var
                        16, 18: HAMALIVE;
     end;
     BCHARLEV := CHARACTR[ BATI].CHARLEV;
-    if Random( BCHARLEV) = 5 then
+    if RNDN( BCHARLEV) = 5 then
       HAMMANGL
   end;  { HAMMAHAM }
 
@@ -533,7 +533,7 @@ var
     PP     : ^TPOSSESS;
   begin
     SLOKTOFE := UNWNONE;
-    if (Random(100)) > 2 * CHARACTR[ BATI].CHARLEV then
+    if (RNDN(100)) > 2 * CHARACTR[ BATI].CHARLEV then
       begin
         MVCURSOR( 1, 13);
         PRINTSTR( 'LOKTOFEIT FAILS!');
@@ -542,7 +542,7 @@ var
     for TEMPXX := 0 to PARTYCNT - 1 do
       begin
         TC := CHARACTR[ TEMPXX];
-        for POSSX := 1 to TC.POSS.POSSCNT do
+        for POSSX := 1 to TC^.POSS.POSSCNT do
           begin
             PP := TC.POSS.POSSESS[ POSSX];
             PP.EQINDEX := 0;
@@ -606,11 +606,11 @@ var
 
   function SMALOR: Byte;
   begin
-    MAZEX := Random(20);
-    MAZEY := Random(20);
-    while (Random(100)) < 30 do
+    MAZEX := RNDN(20);
+    MAZEY := RNDN(20);
+    while (RNDN(100)) < 30 do
       MAZELEV := MAZELEV - 1;
-    while (Random(100)) < 10 do
+    while (RNDN(100)) < 10 do
       MAZELEV := MAZELEV - 1;
     if MAZELEV < SCNTOC.RECPERDK[ ZMAZE] then
       MAZELEV := SCNTOC.RECPERDK[ ZMAZE];
@@ -643,7 +643,7 @@ var
     if SPELL = DIOS    then DOHEAL( 0, CASTGR, 1, 8);
     if SPELL = BADIOS  then DOHITS( CASTGR, CASTI, 1, 8);
     if SPELL = MILWA   then
-      LIGHT := LIGHT + 15 + (Random(15));
+      LIGHT := LIGHT + 15 + (RNDN(15));
     if SPELL = PORFIC  then MODAC( 0, 4, BATI, BATI);
     if SPELL = MATU    then MODAC( 0, 2, 0, PARTYCNT - 1);
     if SPELL = MANIFO  then DOHOLD;
@@ -705,7 +705,7 @@ var
             MVCURSOR( 1, 12);
             DSPNAMES( CASTGR, CASTI);
             PRINTSTR( 'IS HIT BY MABADI!');
-            PT04L.HPLEFT := 1 + (Random(8))
+            PT04L.HPLEFT := 1 + (RNDN(8))
           end
       end;
     if SPELL = LOKTOFEI then

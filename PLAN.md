@@ -49,6 +49,7 @@ These play end to end on a 130XE in Altirra:
 - **WIZHI:** about 100 bytes free below $F800. Make room before adding resident code.
 - **UTILITIE overlay:** about 180 bytes free.
 - **Intermittent crash:** seen once in early ROLLER testing and not reproduced since. It was probably one of the memory corruptions fixed below.
+- **Cemetery tombstone:** its glyphs (character-set block 2) look cramped, squeezed from 7 to 4 pixels. Only block 1 has hand-made 4×8 glyphs. The layout matches the Apple.
 - **Stale file:** `combat.pas` (untracked) is the old monolithic combat source and is unused.
 - **Build tools outside the repo:** `build.ps1` uses `../tools/`:
   - `mkimports.py`, `mkovl.py`, `mkscen.py`
@@ -59,7 +60,13 @@ These play end to end on a 130XE in Altirra:
 
 ## Next steps (in order)
 
-1. **REWARDS chest path:** open, inspect, Calfo and disarm; trap effects; the chest and gold pictures.
+1. ~~**REWARDS chest path**~~ done 2026-10-22: `test\chesttests.ps1` covers it.
+   - Chest and gold pictures.
+   - Open: untrapped, poison needle, crossbow (damage), alarm, teleporter.
+   - Inspect: a failed roll sets the trap off.
+   - Disarm: the typed name matches; a failed disarm sets the trap off.
+   - Calfo and Leave.
+   - Not yet seen: anti-mage and anti-priest on a mage or priest, and a successful disarm (needs a thief).
 2. **Combat coverage:**
    - A mage or priest in the party, to exercise CAST.
    - A caster monster, for enemy spells.
@@ -129,6 +136,7 @@ Repros for each are in `../mpbugs/`.
   - Record or array copies into a field through a pointer must be done per field or per element.
 - **bug16:** a `^record` field counts as 0 bytes, so later field offsets are wrong. Declare such fields as untyped `Pointer` (TENEMY2.A/B).
 - **bug17:** `V := 10*V + ARR[I]`, with V a var parameter, loses the index. Accumulate in a local.
+- **Random:** never use MP's `Random`; use HIUTIL `RNDN( R)`. MP's RndSeed is never seeded, so `Random( SmallInt)` always returned 0, and its LCG keeps bit 0 constant anyway. The build fails on `jsr SYSTEM.RANDOM`.
 - **No recursion, and no New/GetMem.** Either adds `psptr` and shifts the overlay's zero page away from the residents'. Write tail recursion as a loop. A function that reads its own name is a recursive call: use `Result`.
 - **Other gotchas:**
   - Write field widths are ignored. Use SPACES/WRITEINT/PRINTNUM.
@@ -154,6 +162,14 @@ Repros for each are in `../mpbugs/`.
   - At `-Scale 0.75` the game keeps up with every key: the demo is about 15,750 frames instead of 21,000. One of two runs stalled after the maze walk (frame ~12,120: the remaining keys never fired) and the rerun was clean, so the cause is unknown.
   - For tests whose outcome varies (fights), read the state from a dump (`DONEFIGH`, `XGOTO`) between steps rather than relying on fixed round counts.
   - "Invalid breakpoint number: 0" in `run.log` is harmless: the first key's breakpoint fires twice.
+- **Saved states:** a `-Pre` line can make one (`.savestate file`), e.g. `test\chest.ps1`, which saves at the chest menu. `test\fromstate.ps1 <name> <state> <keys> -Dump N` runs keys from a state in seconds, with output in `test\out\<name>\`.
+  - Altirra's `@frame` restarts near 0 after `.loadstate`, so key frames count from the load.
+  - A state captures the code, so regenerate it after every rebuild.
+  - Several from-state runs can go in parallel, each with its own name.
+  - `test\chesttests.ps1` runs the chest cases this way, poking TRAPTYPE/TRAP3TYP after the load.
+  - `test\rwvars.py dump.bin [VAR…]` prints REWARDS variables and party slot 0.
+- **Random numbers:** with real randomness a run's encounters vary, so a scripted maze walk can meet a random fight. Scripts that need a known fight force the encounter straight after the stairs (`chest.ps1`).
+- **Hook addresses:** `test\hook.ps1 [proc] [binary]` finds any procedure in a listing (e.g. `RUNOVL wizres`). A breakpoint `pc=<RUNOVL> and a=$0A` catches the start of CUTIL; A holds the overlay number.
 - **Recording:** `test\altdemo.ps1` opens the same demo visibly and paused, ready to record with File › Record Video, then F5.
 - **Key codes (KBCODE):**
 

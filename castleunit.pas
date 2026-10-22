@@ -5,7 +5,7 @@ unit CASTLEUNIT;
   Key changes from Apple Pascal:
     - MOVELEFT record copies -> LOADTCHAR / SAVETCHAR (pointer-aware loaders)
     - WITH CHARACTR[X] DO -> local TC := CHARACTR[X] pointer
-    - RANDOM MOD N -> Random(N)
+    - RANDOM MOD N -> RNDN(N)
     - SCNTOC.ALIGN/CLASS/STATUS arrays -> SCNTOC_ALIGN/CLASS/STATUS globals
     - CLASS field renamed XCLASS (reserved word in MP)
     - TWIZLONG fields LOW/MID/HIGH -> XLOW/XMID/XHIGH
@@ -143,10 +143,10 @@ var HITPTS : SmallInt; TC : ^TCHAR;
 begin
   TC := CHARACTR[ _partyx];
   case TCLASS( TC^.XCLASS) of
-    FIGHTER, LORD:         HITPTS := Random( 10);
-    PRIEST,  SAMURAI:      HITPTS := Random(  8);
-    THIEF,   BISHOP, NINJA: HITPTS := Random(  6);
-    MAGE:                  HITPTS := Random(  4);
+    FIGHTER, LORD:         HITPTS := RNDN( 10);
+    PRIEST,  SAMURAI:      HITPTS := RNDN(  8);
+    THIEF,   BISHOP, NINJA: HITPTS := RNDN(  6);
+    MAGE:                  HITPTS := RNDN(  4);
   end;
   HITPTS := HITPTS + 1;
   case TC.ATTRIB[ Byte( VITALITY)] of
@@ -172,7 +172,7 @@ begin
     SPLKNOWN := SPLKNOWN or SKNS^[ SPELLI];
   for SPELLI := LOWINDX to HIGHINDX do
     if not SKNS^[ SPELLI] then
-      if (Random( 30) < TC.ATTRIB[ Byte( _iqpiety)]) or (not SPLKNOWN) then
+      if (RNDN( 30) < TC.ATTRIB[ Byte( _iqpiety)]) or (not SPLKNOWN) then
         begin
           _learned      := true;
           SPLKNOWN      := true;
@@ -226,12 +226,12 @@ begin
   TC := CHARACTR[ _partyx];
   for _attribx := STRENGTH to LUCK do
     begin
-      if Random( 4) <> 0 then
+      if RNDN( 4) <> 0 then
         begin
           ATTRVAL := TC.ATTRIB[ Byte( _attribx)];
-          if Random( 130) < (TC.AGE div 52) then
+          if RNDN( 130) < (TC.AGE div 52) then
             begin
-              if (ATTRVAL = 18) and (Random( 6) <> 4) then
+              if (ATTRVAL = 18) and (RNDN( 6) <> 4) then
                 { nothing }
               else
                 begin

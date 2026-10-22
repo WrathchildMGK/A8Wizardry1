@@ -1,6 +1,10 @@
-# Address of WIZHI's VBI handler (NMIH), read from the current build's
-# listing, as '$XXXX'.  It moves whenever WIZHI changes.
-param([string]$Lst = 'C:\cc65-new\Wizardry\atari\build\wizhi.lst')
-$m = Select-String -Path $Lst -Pattern '^\s*\d+\s+([0-9A-F]{4})\s+\.local\s+NMIH\b' | Select-Object -First 1
-if (-not $m) { throw "NMIH not found in $Lst" }
+# Address of a procedure in the current build, read from its listing, as
+# '$XXXX' (addresses move whenever the code changes).  Default: WIZHI's VBI
+# handler NMIH, which runs once per frame.
+#   .\hook.ps1                       -> NMIH in wizhi.lst
+#   .\hook.ps1 RUNOVL wizres         -> RUNOVL in wizres.lst
+param([string]$Name = 'NMIH', [string]$Bin = 'wizhi')
+$Lst = "$PSScriptRoot\..\build\$Bin.lst"
+$m = Select-String -Path $Lst -Pattern "^\s*\d+\s+([0-9A-F]{4})\s+\.local\s+$Name\b" | Select-Object -First 1
+if (-not $m) { throw "$Name not found in $Lst" }
 '$' + $m.Matches[0].Groups[1].Value

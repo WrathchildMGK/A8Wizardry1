@@ -63,7 +63,7 @@ procedure CUTIL;
     begin
       if HEALCHAN > 50 then
         HEALCHAN := 50;
-      if (Random(100)) <= HEALCHAN then
+      if (RNDN(100)) <= HEALCHAN then
         begin
           TBRC := BATTLERC[ T2];
           TBRA := TBRC^.A;
@@ -147,7 +147,7 @@ procedure CUTIL;
           TC   := CHARACTR[ T1];
           if Ord( PT04^.XSTATUS) < Ord( DEAD) then
             begin
-              if (Random(4)) = 2 then
+              if (RNDN(4)) = 2 then
                 PT04.HPLEFT := PT04.HPLEFT + TC.HEALPTS - TC.LOSTXYL[ 1];
               if PT04.HPLEFT > TC.HPMAX then
                 PT04.HPLEFT := TC.HPMAX;
@@ -301,11 +301,11 @@ procedure CUTIL;
       begin
         TC   := CHARACTR[ PARTYI];
         PT04 := DBRA0.TEMP04[ PARTYI];
-        if (Random(99)) < (TC.ATTRIB[ Ord( IQ)] +
+        if (RNDN(99)) < (TC.ATTRIB[ Ord( IQ)] +
                               TC.ATTRIB[ Ord( PIETY)] +
                               TC.CHARLEV) then
           begin
-            DBRC_R := BATTLERC[ Random( 4) + 1];
+            DBRC_R := BATTLERC[ RNDN( 4) + 1];
             DBRA_R := DBRC_R^.A;
             DBRA_R.IDENTIFI := true
           end;
@@ -417,7 +417,7 @@ procedure CUTIL;
     begin
       TC := CHARACTR[ CHARX];
       CANATTCK := (not TC.WEPVSTY2[ 1, Byte( EABTB.XCLASS)]) or
-                  BSET_CB( (Random(100)) < 50)
+                  BSET_CB( (RNDN(100)) < 50)
     end;
 
 
@@ -425,7 +425,7 @@ procedure CUTIL;
 
       procedure SPELLEZR( var SPELLGR: SmallInt);
       begin
-        if Random( EABRA.ALIVECNT + 2) = 0 then
+        if RNDN( EABRA.ALIVECNT + 2) = 0 then
           SPELLGR := SPELLGR - 1
       end;
 
@@ -434,9 +434,9 @@ procedure CUTIL;
         SPELLCAS : SmallInt;
         TWOTHIRD : Boolean;
       begin
-        while (SPELLLEV > 1) and ((Random(100)) > 70) do
+        while (SPELLLEV > 1) and ((RNDN(100)) > 70) do
           SPELLLEV := SPELLLEV - 1;
-        TWOTHIRD := BSET_CB( (Random(100)) > 33);
+        TWOTHIRD := BSET_CB( (RNDN(100)) > 33);
         SPELLEZR( EABTB^.MAGSPELS);
         case Byte( SPELLLEV) of
           1: if TWOTHIRD then SPELLCAS := KATINO  else SPELLCAS := HALITO;
@@ -455,7 +455,7 @@ procedure CUTIL;
         SPELLCAS : SmallInt;
         TWOTHIRD : Boolean;
       begin
-        TWOTHIRD := BSET_CB( (Random(100)) > 33);
+        TWOTHIRD := BSET_CB( (RNDN(100)) > 33);
         SPELLEZR( EABTB^.PRISPELS);
         case Byte( SPELLLEV) of
           1: SPELLCAS := BADIOS;
@@ -471,11 +471,11 @@ procedure CUTIL;
 
     begin  { ENEMYSPL }
       if EABTB.MAGSPELS > 0 then
-        if (Random(100)) < 75 then
+        if (RNDN(100)) < 75 then
           GETMAGSP( EABTB.MAGSPELS);
       if ATTCKTYP = 0 then
         if EABTB.PRISPELS > 0 then
-          if (Random(100)) < 75 then
+          if (RNDN(100)) < 75 then
             GETPRISP( EABTB.PRISPELS)
     end;
 
@@ -484,7 +484,7 @@ procedure CUTIL;
     begin
       if EABTB.SPPC[ 6] then
         if EABRA.ALIVECNT < 5 then
-          if (Random(100)) < 75 then
+          if (RNDN(100)) < 75 then
             ATTCKTYP := -4
     end;
 
@@ -494,7 +494,7 @@ procedure CUTIL;
       if not EABTB.SPPC[ 5] then
         exit;
       if MYSTRENG > ENSTRENG then
-        if (Random(100)) < 65 then
+        if (RNDN(100)) < 65 then
           ATTCKTYP := -2
     end;
 
@@ -502,7 +502,7 @@ procedure CUTIL;
     procedure BREATHES;
     begin
       if EABTB.BREATHE > 0 then
-        if (Random(100)) < 60 then
+        if (RNDN(100)) < 60 then
           ATTCKTYP := -3
     end;
 
@@ -551,7 +551,7 @@ procedure CUTIL;
           AVBTB := AVBRC^.B;
           if AVBRA.ALIVECNT > 0 then
             begin
-              if (Random(100)) <=
+              if (RNDN(100)) <=
                  30 + ((20 * ADVSTREN[ AVGI]) div ADVSTREN[ AVGI - 1]) then
                 begin
                   MVCURSOR( 1, 15 - AVGI);
@@ -591,7 +591,7 @@ procedure CUTIL;
               PT04 := EABRA.TEMP04[ ENEMYX];
               if (Byte( PT04^.XSTATUS) = 0) and (SURPRISE <> 1) then  { OK=0 }
                 begin
-                  PT04.AGILITY := (Random(8)) + 2;
+                  PT04.AGILITY := (RNDN(8)) + 2;
                   if PARTYCNT = 1 then
                     CHARX := 0
                   else
@@ -603,7 +603,7 @@ procedure CUTIL;
                           CHARX := CHARX - 1;
                           PT04 := EABRA0.TEMP04[ CHARX]
                         end;
-                      CHARX := Random( CHARX + 1);
+                      CHARX := RNDN( CHARX + 1);
                       PT04 := EABRA.TEMP04[ ENEMYX]
                     end;
                   PT04.VICTIM   := CHARX;
@@ -626,7 +626,7 @@ procedure CUTIL;
                         end;
                       if ATTCKTYP = 0 then
                         if (ENEMYX <= 4 - GROUPI) or
-                           ((60 - 10 * GROUPI) <= (Random(100))) then
+                           ((60 - 10 * GROUPI) <= (RNDN(100))) then
                           begin
                             CHARX := CHARX mod 3;
                             if CANATTCK then

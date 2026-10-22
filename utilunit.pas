@@ -17,7 +17,7 @@ unit UTILUNIT;
     - MOVELEFT TCHAR   -> LOADTCHAR
     - MOVELEFT TOBJREC -> LOADOBJREC
     - MOVELEFT TSCNTOC -> (SCNTOC is already a global; reload stubbed)
-    - RANDOM MOD N -> Random(N)
+    - RANDOM MOD N -> RNDN(N)
     - GOTOXY(X,Y)  -> GotoXY(X,Y)
     - BASE12.GOTOX -> XGOTO2 (CAMP sets XGOTO2 before jumping to XCAMPSTF)
     - UNITREAD/UNITWRITE -> stubbed (disk I/O not yet wired up)
@@ -227,12 +227,12 @@ procedure UTILITIE;
     PP := TC.POSS.POSSESS[ ITEMX];
     if PP.IDENTIF then if EXITIDIT = U_UTILITIE then exit;
     PP.IDENTIF :=
-      (Random( 100)) < (10 + 5 * TC.CHARLEV);
+      (RNDN( 100)) < (10 + 5 * TC.CHARLEV);
     if PP.IDENTIF then
       CENTSTR( 'SUCCESS!')
     else
       CENTSTR( 'FAILURE');
-    if (Random( 100)) < (35 - (3 * TC.CHARLEV)) then
+    if (RNDN( 100)) < (35 - (3 * TC.CHARLEV)) then
       begin
         LOADOBJREC( PP.EQINDEX, OBJ);
         PP.CURSED := OBJ.CURSED;
@@ -415,7 +415,7 @@ procedure UTILITIE;
           begin
             XTC := CHARACTR[ X];
             if Byte( XTC^.STATUS) < Byte( DEAD) then
-              if (Random( 25)) > XTC.ATTRIB[ AGILITY] then
+              if (RNDN( 25)) > XTC.ATTRIB[ AGILITY] then
                 SETSTAT( XTC, DEAD)
           end;
         MAZELEV := 0;
@@ -544,8 +544,8 @@ procedure UTILITIE;
       var X1, Y1 : SmallInt;
       begin
         FINDSPOT := UNWNONE;
-        X1 := Random( 20);
-        Y1 := Random( 20);
+        X1 := RNDN( 20);
+        Y1 := RNDN( 20);
         FIGHTX := X1;
         FIGHTY := Y1;
         repeat
@@ -694,7 +694,7 @@ procedure UTILITIE;
           GETKEY
         until (INCHAR = 'Y') or (INCHAR = 'N');
         if INCHAR = 'N' then exit;
-        if (Random( 100)) < OBJ.CHGCHANC then
+        if (RNDN( 100)) < OBJ.CHGCHANC then
           begin
             PP := TC.POSS.POSSESS[ POSSI];
             PP.EQINDEX := OBJ.CHANGETO

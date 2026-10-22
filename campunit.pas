@@ -237,7 +237,7 @@ var
         else
           while HPTRIES > 0 do
             begin
-              HPHEALED := HPHEALED + Random( MAXHPTRY) + 1;
+              HPHEALED := HPHEALED + RNDN( MAXHPTRY) + 1;
               HPTRIES  := HPTRIES - 1
             end;
         TC_HEAL.HPLEFT := TC_HEAL.HPLEFT + HPHEALED;
@@ -274,7 +274,7 @@ var
         function DIKADORT: Byte;
         begin
           TC_HEAL := CHARACTR[ HEALME];
-          if Random( 100) <= 4 * TC_HEAL.ATTRIB[ VITALITY] then
+          if RNDN( 100) <= 4 * TC_HEAL.ATTRIB[ VITALITY] then
             begin
               SETSTATUS_CU( TC_HEAL, OK);
               if DIKADOXX = 5 then TC_HEAL.HPLEFT := 1
@@ -389,7 +389,7 @@ var
         begin
           U := CHKSPCNT( 1, 25);
           if U = UNWNONE then U := DECPRIEST( 1);
-          if U = UNWNONE then LIGHT := 15 + Random( 15)
+          if U = UNWNONE then LIGHT := 15 + RNDN( 15)
         end
       else if SPELHASH = DUMAPI then
         U := DODUMAPI
@@ -477,7 +477,7 @@ var
       if Byte( THEITEM.OBJTYPE) <> Byte( SPECIAL) then
         if not PP.EQUIPED then
           begin AASTRAA( 'NOT EQUIPPED'); exit end;
-      if Random( 100) < THEITEM.CHGCHANC then
+      if RNDN( 100) < THEITEM.CHGCHANC then
         PP.EQINDEX := THEITEM.CHANGETO;
       SPTR := SCNTOC.SPELLS;
       Result := CASTSPEL( SPTR.SPELLHSH[ THEITEM.SPELLPWR]);

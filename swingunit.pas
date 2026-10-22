@@ -32,7 +32,7 @@ var
 
   procedure ARMATTK;
   begin
-    case (Random(5)) of
+    case Byte( RNDN(5)) of
       0: PRINTSTR( 'SWINGS');
       1: PRINTSTR( 'THRUSTS');
       2: PRINTSTR( 'STABS');
@@ -86,7 +86,7 @@ var
     if GROUPI <> 0 then
       begin
         XBTB := XBRC^.B;
-        if XBTB.UNAFFCT > (Random(100)) then
+        if XBTB.UNAFFCT > (RNDN(100)) then
           HITDAM := 0
       end;
     if HITDAM = 0 then
@@ -117,7 +117,7 @@ var
     HITPTS := 0;
     while AHPREC.LEVEL > 0 do
       begin
-        HITPTS       := HITPTS + (Random(AHPREC.HPFAC)) + 1;
+        HITPTS       := HITPTS + (RNDN(AHPREC.HPFAC)) + 1;
         AHPREC.LEVEL := AHPREC.LEVEL - 1
       end;
     CALCHP := HITPTS + AHPREC.HPMINAD
@@ -146,7 +146,7 @@ var
             MVCURSOR( 1, 12);
             HITDAM := PT04.HPLEFT div 2;
             TC := CHARACTR[ CHARX];
-            if (Random(20)) >= TC.LUCKSKIL[ 3] then
+            if (RNDN(20)) >= TC.LUCKSKIL[ 3] then
               HITDAM := (HITDAM + 1) div 2;
             if TC.WEPVSTY3[ 1, BTB.BREATHE] then
               HITDAM := (HITDAM + 1) div 2;
@@ -221,14 +221,14 @@ var
           CHANCBAD : SmallInt;
         begin
           TC2 := CHARACTR[ MYVICTIM];
-          if (Random(20)) > TC2.LUCKSKIL[ STONFLAG] then
+          if (RNDN(20)) > TC2.LUCKSKIL[ STONFLAG] then
             exit;
           if ATTK0123 = 3 then
             begin
               CHANCBAD := BTB.HPREC.LEVEL * 2;
               if CHANCBAD > 50 then
                 CHANCBAD := 50;
-              if (Random(100)) > CHANCBAD then
+              if (RNDN(100)) > CHANCBAD then
                 exit
             end;
           if POISSTON > 0 then
@@ -271,7 +271,7 @@ var
 
         procedure RIPBITCL;
         begin
-          case (Random(5)) of
+          case Byte( RNDN(5)) of
             0: PRINTSTR( 'TEARS');
             1: PRINTSTR( 'RIPS');
             2: PRINTSTR( 'GNAWS');
@@ -282,7 +282,7 @@ var
 
         procedure ARMRIP;
         begin
-          if (Random(2)) = 1 then RIPBITCL else ARMATTK
+          if (RNDN(2)) = 1 then RIPBITCL else ARMATTK
         end;
 
       begin  { ATTKSTRG }
@@ -326,8 +326,8 @@ var
           PRINTSTR( ' ');                             { v3.2 WC018 }
           HITPROB( HPCALCPC);
           MVCURSOR( 1, 13);
-          for RECSI := 1 to BTB.RECSN do
-            if (Random(20)) >= HPCALCPC then
+          for RECSI := 1 to BTB^.RECSN do
+            if (RNDN(20)) >= HPCALCPC then
               begin
                 PREC := BTB.RECS[ RECSI];
                 HPDAMAGE := HPDAMAGE + CALCHP( PREC^);
@@ -402,7 +402,7 @@ var
           HITPROB( HPCALCPC);                         { v3.2 WC018 }
           MVCURSOR( 1, 13);
           for TEMPX := 1 to TC2^.SWINGCNT do
-            if (Random(20)) >= HPCALCPC then
+            if (RNDN(20)) >= HPCALCPC then
               begin
                 HPDAMAGE := HPDAMAGE + CALCHP( TC2.HPDAMRC);
                 HITSCNT  := HITSCNT + 1
@@ -426,8 +426,8 @@ var
             begin
               TEMPX := TC2.CHARLEV * 2;
               if TEMPX > 50 then TEMPX := 50;
-              if (Random(100)) < TEMPX then
-                if (Random(35)) >
+              if (RNDN(100)) < TEMPX then
+                if (RNDN(35)) >
                    XBTBV.HPREC.LEVEL + 10 then
                   begin
                     MVCURSOR( 1, 14);
@@ -478,7 +478,7 @@ var
     if SBRA.ALIVECNT = 9 then
       NONECOME;
     if not _exityh then
-      if (Random(200)) > 10 * BTB.HPREC.LEVEL then
+      if (RNDN(200)) > 10 * BTB.HPREC.LEVEL then
         NONECOME;
     if not _exityh then
       begin
@@ -535,7 +535,7 @@ var
       begin
         PT04D := XBRAV.TEMP04[ CHARX];
         if Byte( PT04D^.XSTATUS) < 5 then              { v3.2 WC011: < DEAD }
-          if (Random(100)) < DISPCALC then
+          if (RNDN(100)) < DISPCALC then
             if XBTBV.XCLASS = 10 then
               begin
                 DISPLCNT := DISPLCNT + 1;

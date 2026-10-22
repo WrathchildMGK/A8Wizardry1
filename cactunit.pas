@@ -97,7 +97,7 @@ var
       CLRRECT( 1, 11, 38, 4);
       ITEMCNT := 0;
       TC := CHARACTR[ MYCHARX];
-      for POSSX := 1 to TC.POSS.POSSCNT do
+      for POSSX := 1 to TC^.POSS.POSSCNT do
         begin
           BUSEABLE[ POSSX] := false;
           MVCURSOR( 1 + 19 * ((POSSX - 1) mod 2),
@@ -127,7 +127,7 @@ var
 
     procedure CHGITEM;
     begin
-      if (Random(100)) >= OBJREC.CHGCHANC then
+      if (RNDN(100)) >= OBJREC.CHGCHANC then
         exit;
       PP := TC.POSS.POSSESS[ POSSX];
       PP.EQINDEX := OBJREC.CHANGETO;
@@ -315,7 +315,7 @@ var
       TEMP := TEMP + 20;
     if MAZELEV = 10 then
       TEMP := -1;
-    if (Random(100)) > TEMP then
+    if (RNDN(100)) > TEMP then
       exit( RUNFAILD);
     for TEMP := 1 to 4 do
       begin
@@ -366,7 +366,7 @@ begin  { CACTION }
           begin
             PT04.SPELLHSH := -999;
             repeat
-              AGIL1TEN := Random(10);
+              AGIL1TEN := RNDN(10);
               TC := CHARACTR[ MYCHARX];
               case TC.ATTRIB[ Ord( AGILITY)] of
                  3: AGIL1TEN := AGIL1TEN + 3;
@@ -379,10 +379,10 @@ begin  { CACTION }
                 17: AGIL1TEN := AGIL1TEN - 3;
                 18: AGIL1TEN := AGIL1TEN - 4;
               end;
-              if TC.XCLASS = NINJA then                 { v3.2 WC030 }
+              if TC^.XCLASS = NINJA then                 { v3.2 WC030 }
                 begin
                   UNARMED2 := true;
-                  for POSSY := 1 to TC.POSS.POSSCNT do
+                  for POSSY := 1 to TC^.POSS.POSSCNT do
                     begin
                       PP := TC.POSS.POSSESS[ POSSY];
                       if PP.EQUIPED then UNARMED2 := false
@@ -409,9 +409,9 @@ begin  { CACTION }
               MVCURSOR( 13, 9);
               PRINTSTR( 'R)UN    U)SE    ');
               BDISPELL := false;
-              if (Byte( TC.XCLASS) = 2) or
-                 ((Byte( TC.XCLASS) = 6) and (TC.CHARLEV > 8)) or
-                 ((Byte( TC.XCLASS) = 4) and (TC.CHARLEV > 3)) then
+              if (Byte( TC^.XCLASS) = 2) or
+                 ((Byte( TC^.XCLASS) = 6) and (TC.CHARLEV > 8)) or
+                 ((Byte( TC^.XCLASS) = 4) and (TC.CHARLEV > 3)) then
                 begin
                   BDISPELL := true;
                   PRINTSTR( 'D)ISPEL  ')                { v3.2 WC002 }

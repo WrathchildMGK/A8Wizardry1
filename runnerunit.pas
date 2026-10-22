@@ -11,7 +11,7 @@ unit RUNNERUNIT;
     - MAZE.SQREXTRA[X][Y] → MAZE.SQREXTRA^[X*20+Y]
     - WITH MAZE.ENMYCALC[n] DO → with MAZE.ENMYCALC[n]^ do
     - WITH CHARACTR[n] DO → with CHARACTR[n]^ do
-    - RANDOM MOD n → Random(n)
+    - RANDOM MOD n → RNDN(n)
     - SCNTOC.CLASS/ALIGN/STATUS → SCNTOC_CLASS/SCNTOC_ALIGN/SCNTOC_STATUS
     - CLASS field → XCLASS  (CLASS is reserved in MP)
     - LOSTXYL.POISNAMT[1] → LOSTXYL[1]  (flat variant array)
@@ -156,7 +156,7 @@ procedure RUNNER;
       DRAWLINE( UL - WALWIDTH, UL - WALWIDTH, 0, 1, WALHEIGH + WALHEIGH);
       if (WALLTYPE = Byte( OPEN)) or (WALLTYPE = Byte( WALL)) or
          ((WALLTYPE = Byte( HIDEDOOR)) and
-          (not GOTLIGHT and (Random( 6) <> 3))) then
+          (not GOTLIGHT and (RNDN( 6) <> 3))) then
         exit;
       DRAWLINE( UL - DOORFRAM, UL, -1, -1, DOORWIDT);
       DRAWLINE( UL - DOORFRAM, UL,  0,  1, WALHEIGH + DOORFRAM);
@@ -174,7 +174,7 @@ procedure RUNNER;
       DRAWLINE( LR + WALWIDTH, UL - WALWIDTH, 0, 1, WALHEIGH + WALHEIGH);
       if (WALLTYPE = Byte( OPEN)) or (WALLTYPE = Byte( WALL)) or
          ((WALLTYPE = Byte( HIDEDOOR)) and
-          (not GOTLIGHT and (Random( 6) <> 3))) then
+          (not GOTLIGHT and (RNDN( 6) <> 3))) then
         exit;
       DRAWLINE( LR + DOORFRAM, UL,  1, -1, DOORWIDT);
       DRAWLINE( LR + DOORFRAM, UL,  0,  1, WALHEIGH + DOORFRAM);
@@ -191,7 +191,7 @@ procedure RUNNER;
       DRAWLINE( UL + LRCENT,            UL + WALHEIGH, 1, 0, WALHEIGH);
       if (FRNTWALL = Byte( OPEN)) or (FRNTWALL = Byte( WALL)) or
          ((FRNTWALL = Byte( HIDEDOOR)) and
-          (not GOTLIGHT and (Random( 6) <> 3))) then
+          (not GOTLIGHT and (RNDN( 6) <> 3))) then
         exit;
       DRAWLINE( UL + LRCENT + DOORFRAM, LR, 0, -1,
                 WALWIDTH + DOORWIDT + DOORFRAM);
@@ -388,14 +388,14 @@ procedure RUNNER;
     MVCURSOR( 14, 12);
     PRINTSTR( 'AN ENCOUNTER');
     ENCTYPE := 1;
-    while (Random( 4) = 2) and (ENCTYPE < 3) do
+    while (RNDN( 4) = 2) and (ENCTYPE < 3) do
       ENCTYPE := ENCTYPE + 1;
     PMAZE  := @MAZE;
     ENCREC := PMAZE.ENMYCALC[ ENCTYPE];
     ENCCALC := 0;
-    while (Random( 100) < ENCREC.PERCWORS) and (ENCCALC < ENCREC.WORSE01) do
+    while (RNDN( 100) < ENCREC.PERCWORS) and (ENCCALC < ENCREC.WORSE01) do
       ENCCALC := ENCCALC + 1;
-    ENEMYI := ENCREC.MINENEMY + Random( ENCREC.RANGE0N) + (ENCREC.MULTWORS * ENCCALC);
+    ENEMYI := ENCREC.MINENEMY + RNDN( ENCREC.RANGE0N) + (ENCREC.MULTWORS * ENCCALC);
     if CHSTALRM = 1 then
       ATTK012 := 2
     else
@@ -433,7 +433,7 @@ procedure RUNNER;
 
       procedure SPINDIR;
       begin
-        DIRECTIO := Random( 4);
+        DIRECTIO := RNDN( 4);
         DRAWMAZE
       end;
 
@@ -497,11 +497,11 @@ procedure RUNNER;
           begin
             PREC := CHARACTR[ PARTYI];
             if Byte( PREC^.STATUS) < Byte( DEAD) then
-              if (Random( 25) + MAZELEV) > PREC.ATTRIB[ AGILITY] then
+              if (RNDN( 25) + MAZELEV) > PREC.ATTRIB[ AGILITY] then
                 begin
                   HPDAM := MAZE.AUX0[ SQTYPE];
                   for HPTIMES := 1 to MAZE.AUX2[ SQTYPE] do
-                    HPDAM := HPDAM + Random( MAZE.AUX1[ SQTYPE]) + 1;
+                    HPDAM := HPDAM + RNDN( MAZE.AUX1[ SQTYPE]) + 1;
                   PREC.HPLEFT := PREC.HPLEFT - HPDAM;
                   if PREC.HPLEFT < 0 then
                     begin
@@ -554,7 +554,7 @@ procedure RUNNER;
         XGOTO    := XCOMBAT;
         ENEMYINX := MAZE.AUX2[ SQTYPE];
         if MAZE.AUX1[ SQTYPE] > 1 then
-          ENEMYINX := ENEMYINX + Random( MAZE.AUX1[ SQTYPE]);
+          ENEMYINX := ENEMYINX + RNDN( MAZE.AUX1[ SQTYPE]);
         if MAZE.AUX0[ SQTYPE] > 0 then
           begin
             MAZE.AUX0[ SQTYPE] := MAZE.AUX0[ SQTYPE] - 1;
@@ -590,8 +590,8 @@ procedure RUNNER;
         if INCHAR = Chr( CRETURN) then exit;
         if MAZE.AUX0[ SQTYPE] > 0 then
           begin
-            MAZEX := Random( 20);
-            MAZEY := Random( 20)
+            MAZEX := RNDN( 20);
+            MAZEY := RNDN( 20)
           end;
         BUTTONS := EXITRUN( MINBUT + Ord( INCHAR) - Ord( 'A'))
       end;
@@ -636,7 +636,7 @@ procedure RUNNER;
       for CHARX := 0 to PARTYCNT - 1 do
         begin
           CHREC := CHARACTR[ CHARX];
-          if Random( 4) = 2 then
+          if RNDN( 4) = 2 then
             CHREC.HPLEFT := CHREC.HPLEFT - CHREC.LOSTXYL[ 1] + CHREC.HEALPTS;
           if CHREC.HPLEFT <= 0 then
             begin
@@ -809,9 +809,9 @@ procedure RUNNER;
           CLRRECT( 1, 11, 38, 4);
       XGOTO2   := XRUNNER;
       NEEDDRMZ := false;
-      if ((Random( 99) = 35) or (CHSTALRM = 1) or FIGHTMAP[ MAZEX][ MAZEY]) or
+      if ((RNDN( 99) = 35) or (CHSTALRM = 1) or FIGHTMAP[ MAZEX][ MAZEY]) or
          (INITTURN and (INCHAR = Chr( 75)) and
-          (MZ_FGT( MAZEX, MAZEY) = 1) and (Random( 8) = 3))
+          (MZ_FGT( MAZEX, MAZEY) = 1) and (RNDN( 8) = 3))
       then
         exit( ENCOUNTR);                                { only U_RUNNER }
       if INITTURN then

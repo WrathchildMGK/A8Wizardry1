@@ -115,7 +115,7 @@ procedure CINIT;
           if ENMYGRUP < 4 then
             if BTG.ENMYTEAM >= 0 then
               if ENMYGRUP <= MAZELEV then
-                if Random( 100) < BTG.TEAMPERC then
+                if RNDN( 100) < BTG.TEAMPERC then
                   begin
                     ENMYI    := BTG.ENMYTEAM;               { ENGROUPS( ENMYTEAM, }
                     ENMYGRUP := ENMYGRUP + 1;               {   ENMYGRUP + 1)     }
@@ -130,7 +130,7 @@ procedure CINIT;
         LLBASE04 := HPMINAD;
         while LEVEL > 0 do
           begin
-            LLBASE04 := LLBASE04 + Random( HPFAC) + 1;
+            LLBASE04 := LLBASE04 + RNDN( HPFAC) + 1;
             LEVEL := LEVEL - 1
           end;
         ENEMYCNT := LLBASE04
@@ -203,7 +203,7 @@ procedure CINIT;
           PT04.ARMORCL  := 0;
           PT04.INAUDCNT := 0;
           PT04.HPLEFT   := TC.HPLEFT;
-          SETXSTATUS_CB( PT04, TSTATUS( Byte( TC.STATUS)));
+          SETXSTATUS_CB( PT04, TSTATUS( Byte( TC^.STATUS)));
           for K := 0 to 6 do
             TC.WEPVSTY3[ 1, K] := TC.WEPVSTY3[ 0, K];
           for K := 0 to 13 do
@@ -231,7 +231,7 @@ procedure CINIT;
         GOODLEAV := GOODLEAV or
                     (Byte( CHARACTR[ INDEX].ALIGN) = Byte( GOOD));
       if not GOODLEAV then exit;
-      ZERO99 := Random(100);
+      ZERO99 := RNDN(100);
       INDEX  := 50;
       case Byte( BTB1.XCLASS) of
         0:  INDEX := 60;
@@ -271,8 +271,8 @@ procedure CINIT;
       for INDEX := 0 to PARTYCNT - 1 do
         begin
           TC := CHARACTR[ INDEX];
-          if Byte( TC.ALIGN) = Byte( GOOD) then
-            if (Random(2000)) = 565 then
+          if Byte( TC^.ALIGN) = Byte( GOOD) then
+            if (RNDN(2000)) = 565 then
               SETALIGN_CB( TC, EVIL)
         end
     end;
@@ -287,9 +287,9 @@ procedure CINIT;
     FillChar( DRAINED[ 0], 6, 0);
     for LLBASE04 := 0 to PARTYCNT - 1 do
       PREBATOR[ LLBASE04] := CHARDISK[ LLBASE04];
-    if (Random(100)) > 80 then
+    if (RNDN(100)) > 80 then
       SURPRISE := 1
-    else if (Random(100)) > 80 then
+    else if (RNDN(100)) > 80 then
       SURPRISE := 2
     else
       SURPRISE := 0;

@@ -7,9 +7,11 @@
 #                             frame, full speed) instead of per instruction
 #   -Pre  'debugger cmd',...  extra lines; {N} = their breakpoint number,
 #                             {HOOK} = the hook address
+#   -State file.atstate2      start from a saved state (.savestate in a -Pre
+#                             line makes one); @frame restarts near 0 on load
 param([string]$Atr = "$PSScriptRoot\..\build\wizardry.atr", [string]$Out = "$PSScriptRoot\out\shot.png",
       [string[]]$Keys = @(), [int]$DumpFrame = 900, [int]$Timeout = 90, [string[]]$Pre = @(),
-      [string]$Hw = '130xe', [string]$MemSize = '128K', [string]$Hook = '')
+      [string]$Hw = '130xe', [string]$MemSize = '128K', [string]$Hook = '', [string]$State = '')
 $Dir = Split-Path $Out
 New-Item -ItemType Directory -Force $Dir | Out-Null
 $Ini = "$PSScriptRoot\out\alt_$Hw.ini"
@@ -20,6 +22,7 @@ if ($Hook -eq 'auto') { $Hook = & "$PSScriptRoot\hook.ps1" }
 $Pre = @($Pre | ForEach-Object { $_.Replace('{HOOK}', $Hook) })
 # key breakpoints first, so their numbers (0..) don't depend on -Pre
 $lines = @(".logopen $log")
+if ($State) { $lines += ".loadstate `"$((Resolve-Path $State).Path)`"" }
 $n = 0
 foreach ($k in $Keys) {
     $f, $c = $k.Split(':')

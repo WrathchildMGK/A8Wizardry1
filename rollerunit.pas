@@ -18,7 +18,7 @@ unit ROLLERUNIT;
     - CHARREC.POSS.POSSESS[I].FIELD -> PP := CHARREC.POSS.POSSESS[I]; PP.FIELD
     - WRITE(CHR(12)) -> ClrScr; GOTOXY, CHR(11), CHR(29) as AP (SCREEN)
     - GETLINE(VAR S) -> GETLINE; S := GTSTRING
-    - RANDOM MOD N   -> Random(N)
+    - RANDOM MOD N   -> RNDN(N)
     - CHG2LST array[FIGHTER..NINJA] -> indexed by Byte(TCLASS)
     - BASEATTR/SIXATTR2 array[STRENGTH..LUCK] -> indexed by Byte(TATTRIB)
     - SUCC(enum) -> SUCC(enum) — try first; fallback cast if MP fails
@@ -170,8 +170,8 @@ var
     begin
       CLEARCHAR( CHARREC);
       CHARREC.NAME      := CHARNAME;
-      CHARREC.AGE       := (18 * 52) + Random( 300);
-      CHARREC.GOLD.XLOW := 90 + Random( 100);
+      CHARREC.AGE       := (18 * 52) + RNDN( 300);
+      CHARREC.GOLD.XLOW := 90 + RNDN( 100);
       SETSTATUS_RL( @CHARREC, OK);
       for LSI := 0 to 4 do
         CHARREC.LUCKSKIL[ LSI] := 16;
@@ -262,8 +262,8 @@ var
         WriteLn( 'ENTER [+,-] TO ALTER A SCORE,');
         WriteLn( '      [RET] TO GO TO NEXT SCORE,');
         WriteLn( '      [ESC] TO GO ON WHEN POINTS USED UP');
-        PTSLEFT := 7 + Random( 4);
-        while (PTSLEFT < 20) and ((Random( 11)) = 10) do
+        PTSLEFT := 7 + RNDN( 4);
+        while (PTSLEFT < 20) and ((RNDN( 11)) = 10) do
           PTSLEFT := PTSLEFT + 10;
         SIXATTR2 := BASEATTR;
         for ATTRIBX := STRENGTH to LUCK do
@@ -433,7 +433,7 @@ var
 
       CLSHPMOD := CLSHPMOD + VITHPMOD;
       for LLBASE04 := 1 to 2 do
-        if Random( 2) = 1 then
+        if RNDN( 2) = 1 then
           CLSHPMOD := (9 * CLSHPMOD) div 10;
       if CLSHPMOD < 2 then CLSHPMOD := 2;
       CHARREC.HPMAX  := CLSHPMOD;
@@ -631,7 +631,7 @@ var
       CHARREC.EXP.XHIGH := 0;
       CHARREC.EXP.XMID  := 0;
       CHARREC.EXP.XLOW  := 0;
-      CHARREC.AGE       := CHARREC.AGE + 52 * Random( 3) + 252;
+      CHARREC.AGE       := CHARREC.AGE + 52 * RNDN( 3) + 252;
 
       SKN := CHARREC.SPELLSKN;
       if CLASSX = MAGE then

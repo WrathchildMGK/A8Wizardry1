@@ -12,7 +12,7 @@ unit SHOPUNIT;
     - MOVELEFT TCHAR -> LOADTCHAR / SAVETCHAR.
     - MOVELEFT TOBJREC -> LOADOBJREC / SAVEOBJREC (in UTIL).
     - WITH CHARACTR[X] DO -> TC := CHARACTR[X] local pointer.
-    - RANDOM MOD N -> Random(N).
+    - RANDOM MOD N -> RNDN(N).
     - TWIZLONG fields LOW/MID/HIGH -> XLOW/XMID/XHIGH.
     - LOSTXYL[n].LOCATION -> LOSTXYL[n] (flat array).
     - LOSTXYL.AWARDS[4] -> LOSTXYL[4] or 1 (set award bit 0).
@@ -171,19 +171,19 @@ procedure SHOPS;
           WriteLn( '');
           if WHO.STATUS = DEAD then
             begin
-              if Random( 100) > (50 + 3 * WHO.ATTRIB[ VITALITY]) then
+              if RNDN( 100) > (50 + 3 * WHO.ATTRIB[ VITALITY]) then
                 exit( ASHLOST)
               else
                 WHO.HPLEFT := 1
             end
           else if WHO.STATUS = ASHES then
             begin
-              if Random( 100) > (40 + 3 * WHO.ATTRIB[ VITALITY]) then
+              if RNDN( 100) > (40 + 3 * WHO.ATTRIB[ VITALITY]) then
                 exit( ASHLOST)
               else
                 WHO.HPLEFT := WHO.HPMAX
             end;
-          WHO.AGE := WHO.AGE + Random( 52) + 1;
+          WHO.AGE := WHO.AGE + RNDN( 52) + 1;
           WHO.STATUS := OK;
           SAVETCHAR( WHOHELP, WHO);
           WriteLn( '');
@@ -631,7 +631,7 @@ procedure SHOPS;
           begin
             TP := TC.POSS.POSSESS[ POSSX];
             if not TP.CURSED then
-              if Random( 21) > TC.ATTRIB[ LUCK] then
+              if RNDN( 21) > TC.ATTRIB[ LUCK] then
                 TP.EQINDEX := 0
           end;
         X := 0;
@@ -663,7 +663,7 @@ procedure SHOPS;
               TC.INMAZE := false;
               DIVLONG( TC.GOLD, TWO);
               BREAKPOS;
-              if Random( 50) < MAZELEV then
+              if RNDN( 50) < MAZELEV then
                 begin
                   TC.LOSTXYL[ 1] := -1;
                   TC.LOSTXYL[ 2] := -1;

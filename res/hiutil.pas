@@ -48,6 +48,12 @@ procedure DRAWLINE ( X, Y, DX, DY, LEN: SmallInt);
 procedure PICTOSCR ( BUFI: SmallInt);        { AP ENEMYPIC / PIC2SCRN }
 procedure PRINTBEL;
 
+{ AP "RANDOM MOD R" (0..R-1), from POKEY's RANDOM.  Not MP's Random: its
+  SmallInt version is RndSeed := $4595 * RndSeed, and nothing seeds it, so
+  every call with a range over 255 or a SmallInt variable returned 0 (and
+  it keeps bit 0 constant even when seeded). }
+function RNDN( R: SmallInt): SmallInt;
+
 { Timing }
 procedure PAUSE1;
 procedure PAUSE2;
@@ -545,6 +551,15 @@ procedure PRINTBEL;
 begin
   { AP: three bell characters.  Atari: write to POKEY AUDCTL/AUDF if wired;
     for now a no-op to avoid corrupting Mode E screen via Write(). }
+end;
+
+function RNDN( R: SmallInt): SmallInt;
+var
+  V : Word;
+begin
+  if R <= 0 then exit( 0);
+  V := ( Word( Peek( $D20A) and $7F) shl 8) or Peek( $D20A);
+  Result := SmallInt( V) mod R
 end;
 
 { ── Timing ───────────────────────────────────────────────────────────────── }

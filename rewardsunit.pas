@@ -227,15 +227,15 @@ procedure REWARDS;
         BTRAPPED := false;
         for TRAPTYPE := 0 to 7 do
           if REWARDZ.BTRAPTYP[ TRAPTYPE] then BTRAPPED := true;
-        TRAP3TYP := Random( 5);
+        TRAP3TYP := RNDN( 5);
         if not BTRAPPED then
           TRAPTYPE := 0
         else
-          if Random( 15) > (4 + MAZELEV) then
+          if RNDN( 15) > (4 + MAZELEV) then
             TRAPTYPE := 0
           else
             begin
-              ZERO99   := Random( 100);
+              ZERO99   := RNDN( 100);
               TRAPTYPE := 0;
               while ZERO99 > 0 do
                 repeat
@@ -299,7 +299,7 @@ procedure REWARDS;
           TOTDAM := 0;
           while HITCNT > 0 do
             begin
-              TOTDAM := TOTDAM + Random( HITDAM) + 1;
+              TOTDAM := TOTDAM + RNDN( HITDAM) + 1;
               HITCNT := HITCNT - 1
             end;
           TC_H        := CHARACTR[ CHARXHIT];
@@ -343,7 +343,7 @@ procedure REWARDS;
           for CHARPM := 0 to PARTYCNT - 1 do
             begin
               TC_PM    := CHARACTR[ CHARPM];
-              PLYZSTON := Random( 20) < TC_PM.LUCKSKIL[ 4];
+              PLYZSTON := RNDN( 20) < TC_PM.LUCKSKIL[ 4];
               case Byte( TC_PM^.XCLASS) of
                 Byte( MAGE):
                   if BMAGEDAM then
@@ -371,12 +371,12 @@ procedure REWARDS;
           begin
             HPDAMALL := UNWNONE;
             for CHARXHIT := 0 to PARTYCNT - 1 do
-              if Random( 100) < CHANCHIT then
+              if RNDN( 100) < CHANCHIT then
                 begin
                   if HPDAMAGE( CHARXHIT, HITCNT, HITDAM) <> UNWNONE then exit( U_REWARDS)
                 end
               else
-                if Random( 100) < CHANCHIT then
+                if RNDN( 100) < CHANCHIT then
                   if HPDAMAGE( CHARXHIT, HITCNT, (HITDAM div 2) + 1) <> UNWNONE then
                     exit( U_REWARDS)
           end;
@@ -416,7 +416,7 @@ procedure REWARDS;
           2:  for CHARX := 0 to PARTYCNT - 1 do   { GAS BOMB }
                 begin
                   TC_D := CHARACTR[ CHARX];
-                  if Random( 20) < TC_D.LUCKSKIL[ 2] then   { v3.2 WC016 }
+                  if RNDN( 20) < TC_D.LUCKSKIL[ 2] then   { v3.2 WC016 }
                     begin
                       TC_D := CHARACTR[ CHARX];
                       TC_D.LOSTXYL[ 1] := 1
@@ -426,9 +426,9 @@ procedure REWARDS;
           3:  if TYPE3DAM = U_REWARDS then exit( U_REWARDS);   { crossbow/box/etc. }
 
           4:  begin   { TELEPORTER }
-                MAZEX    := Random( 20);
-                MAZEY    := Random( 20);
-                DIRECTIO := Random( 4)
+                MAZEX    := RNDN( 20);
+                MAZEY    := RNDN( 20);
+                DIRECTIO := RNDN( 4)
               end;
 
           5:  ANTIPM( true);                            { ANTI-MAGE   }
@@ -462,13 +462,13 @@ procedure REWARDS;
         TRAP : SmallInt;
       begin
         TRAP := 0;
-        RNDX := Random( 50);
+        RNDX := RNDN( 50);
         for LOOP := 1 to RNDX do
           if TRAP = 7 then TRAP := 0
           else          TRAP := TRAP + 1;
         CLRRECT( 13, 8, 26, 2);
         MVCURSOR( 13, 8);
-        PRTRAPTY( TRAP, Random( 5));
+        PRTRAPTY( TRAP, RNDN( 5));
         PAUSE2
       end;
 
@@ -505,10 +505,10 @@ procedure REWARDS;
           CHNCGOOD := CHNCGOOD * 4;
         if CHNCGOOD > 95 then CHNCGOOD := 95;
         CHRXCHST := CHARINSP;
-        if Random( 100) < CHNCGOOD then
+        if RNDN( 100) < CHNCGOOD then
           PRTRAP
         else
-          if Random( 20) > TC_I.ATTRIB[ AGILITY] then
+          if RNDN( 20) > TC_I.ATTRIB[ AGILITY] then
             INSPCHST := DOTRAPDM
           else
             PRRNDTRP
@@ -533,7 +533,7 @@ procedure REWARDS;
         if TC_C.PRIESTSP[ 2] = 0 then exit;
         if TC_C^.STATUS <> OK then exit;
         TC_C.PRIESTSP[ 2] := TC_C.PRIESTSP[ 2] - 1;
-        if Random( 100) < 95 then PRTRAP
+        if RNDN( 100) < 95 then PRTRAP
         else                      PRRNDTRP
       end;
 
@@ -550,7 +550,7 @@ procedure REWARDS;
           CLRRECT( 13, 8, 26, 2);
           MVCURSOR( 18, 8);
           TC_DA := CHARACTR[ CHRXCHST];
-          if Random( 70) <
+          if RNDN( 70) <
              (  TC_DA.CHARLEV
               - MAZELEV
               + (50 * Ord(   (TC_DA^.XCLASS = THIEF)
@@ -562,7 +562,7 @@ procedure REWARDS;
               DISARM := U_ACHEST                        { EXIT( ACHEST) }
             end
           else
-            if Random( 20) < TC_DA.ATTRIB[ AGILITY] then
+            if RNDN( 20) < TC_DA.ATTRIB[ AGILITY] then
               begin
                 PRINTSTR( 'DISARM FAILED!!');
                 PAUSE2;
@@ -628,7 +628,7 @@ procedure REWARDS;
         TC_O := CHARACTR[ CHRXCHST];
         if TC_O^.STATUS <> OK then exit;
         if TRAPTYPE = 0 then exit( U_ACHEST);           { EXIT( ACHEST) }
-        if Random( 1000) < TC_O.CHARLEV then exit( U_ACHEST);
+        if RNDN( 1000) < TC_O.CHARLEV then exit( U_ACHEST);
         OPENCHST := DOTRAPDM
       end;
 
@@ -674,7 +674,7 @@ procedure REWARDS;
         TOTAL := MINADD;
         while TRIES > 0 do
           begin
-            TOTAL := TOTAL + Random( AVEAMT) + 1;
+            TOTAL := TOTAL + RNDN( AVEAMT) + 1;
             TRIES := TRIES - 1
           end;
         CALCULAT := TOTAL
@@ -729,14 +729,14 @@ procedure REWARDS;
               (CHARIIII < REWARDM.REWDCALC[ 2]) do
           CHARIIII := CHARIIII + 1;
         ITEMINDX := REWARDM.REWDCALC[ 0]
-                  + Random( REWARDM.REWDCALC[ 3] + 1)   { v3.2 WC022 }
+                  + RNDN( REWARDM.REWDCALC[ 3] + 1)   { v3.2 WC022 }
                   + (REWARDM.REWDCALC[ 1] * CHARIIII);
         FOUNDITM( CHARXXXX, CHARIIII, ITEMINDX);
         PAUSE2
       end;
 
     begin  { GETREWRD }
-      if REWARDM.REWDPERC < Random( 100) then exit;
+      if REWARDM.REWDPERC < RNDN( 100) then exit;
       if REWARDM.BITEM = 0 then GOLDREWD
       else                       ITEMREWD
     end;

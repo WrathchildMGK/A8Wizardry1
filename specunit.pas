@@ -399,7 +399,7 @@ var
       WADEX := GETCHARX( false, '');
       if WADEX < 0 then exit;
       TC := CHARACTR[ WADEX];
-      if AUX0 = -1 then AUX0 := Random( 7);
+      if AUX0 = -1 then AUX0 := RNDN( 7);
       case Byte( AUX0) of
         0: if TC^.STATUS < DEAD then
              begin
@@ -423,7 +423,7 @@ var
         5: MAKWORSE( STONED);
         6: if TC^.STATUS = DEAD then
              begin
-               if Random( 10) < 3 then
+               if RNDN( 10) < 3 then
                  begin
                    TC.STATUS := OK;
                    TC.HPLEFT := TC.HPMAX
@@ -632,11 +632,11 @@ var
         CHK4DOOR := false;
         if ( WALLTYPE = Byte( OPEN)) or ( WALLTYPE = Byte( WALL)) then exit;
         if WALLTYPE = Byte( HIDEDOOR) then
-          if Random( 100) < 65 then exit;
+          if RNDN( 100) < 65 then exit;
         MOVETOX := ( MOVETOX + 20) mod 20;
         MOVETOY := ( MOVETOY + 20) mod 20;
         if ( DOORCNT = 0) or
-           ( not BEENHERE[ MOVETOX][ MOVETOY] and ( Random( 100) > ( 65 - LIMITMOV))) then
+           ( not BEENHERE[ MOVETOX][ MOVETOY] and ( RNDN( 100) > ( 65 - LIMITMOV))) then
           begin
             SAVEX    := X;
             SAVEY    := Y;
@@ -709,12 +709,12 @@ var
       DOORCNT := 0;
       MZB_SQX[ MAZEX * 20 + MAZEY] := 0;
       LIMITMOV := 0;                                    { FINDDOOR (P010327) }
-      while ( DOORCNT = 0) or ( Random( 65) > LIMITMOV) do
+      while ( DOORCNT = 0) or ( RNDN( 65) > LIMITMOV) do
         begin
           if P010328( MAZEX, MAZEY) <> R_DOOR then break;   { EXIT( FINDDOOR) }
           LIMITMOV := LIMITMOV + 10
         end;
-      DIRECTIO := Random( 4);
+      DIRECTIO := RNDN( 4);
       Result := U_SPECIALS                              { EXIT( SPECIALS) }
     end;
 
