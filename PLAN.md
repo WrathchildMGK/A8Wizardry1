@@ -58,6 +58,25 @@ These play end to end on a 130XE in Altirra:
 
   These, and `../mpbugs/`, are outside this repository.
 
+## Resume here
+
+Everything up to the chest tests is committed: `0587b9e` on `overlay-build`, pushed by the user.
+
+For step 2:
+
+1. Copy `test\keys.ps1` to a variant that creates a priest or mage:
+   - In ROLLER, spend the bonus points on piety or IQ instead of strength.
+   - Pick the class letter offered for it.
+   - Add the character as a second party member in the tavern: A)dd, name, RETURN.
+2. Make a saved state at the first combat menu with a variant of `test\chest.ps1`. Use its RUNOVL `a=$0A` breakpoint to `.savestate`, without the kill pokes.
+3. Drive S)PELL from that state with `fromstate.ps1` (spell name typed in). Check the CAST overlay and the spell's effect in a dump.
+
+**Rebuild routine.** After every rebuild, regenerate any saved state before using it.
+
+**Before trusting a run, check:**
+- the build log shows `ZPAGE: $0080..$00D3`;
+- `tools/ptrfield.py` is clean.
+
 ## Next steps (in order)
 
 1. ~~**REWARDS chest path**~~ done 2026-10-22: `test\chesttests.ps1` covers it.
