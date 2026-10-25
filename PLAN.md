@@ -6,7 +6,7 @@ and the v3.2 scenario disk
 Built with Mad Pascal 1.7.9 and MADS into a LiteDOS ATR for a 130XE, with a
 64K fallback. Tested in Altirra (`D:\altirra\altirra64.exe`).
 
-Last updated: 2026-10-21.
+Last updated: 2026-10-25.
 
 ## Status
 
@@ -26,19 +26,23 @@ These play end to end on a 130XE in Altirra:
   - Monster portraits in colour.
   - Party options; melee with the v3.2 hit-probability text and damage.
   - Monsters die, and REWARDS gives the correct EXP and gold.
+  - Party spells: HALITO, KATINO (mage); BADIOS, DIOS (priest). Spell points are spent.
+  - Enemy spells: LVL 1 PRIESTs cast BADIOS, a LVL 1 MAGE casts KATINO on the party.
+  - A friendly encounter (F)ight or L)eave), and a party wipe leading to the cemetery.
+- **Camp:** a priest casts DIOS on another character.
   - Returns to the maze afterwards.
 - **Demo:** `test/altdemo.ps1` plays all of this by itself, for recording.
 
 ### Not yet exercised
 
 - **Combat:**
-  - Spells, from the party (S)PELL, CAST overlay) and from enemies.
+  - Spells above level 1, and breath attacks (CREEPING COIN, enemy 12).
   - Parry, run, use item, dispel.
   - Parties of 2–6 and several enemy groups.
-  - Party death leading to the cemetery.
+  - Leaving the cemetery after a party wipe.
   - Level drain.
 - **REWARDS:** treasure chests (open, inspect, disarm, traps) and the chest and gold pictures (PIC2SCRN, now wired up).
-- **Camp:** spells and items.
+- **Camp:** items, and spells other than DIOS.
 - **Town:** Boltac's (buy, sell, identify), Temple of Cant.
 - **Saving:** a character persisting across a reboot.
 - **Natural encounters:** only the forced CHSTALRM encounter is tested.
@@ -46,7 +50,7 @@ These play end to end on a 130XE in Altirra:
 
 ### Known issues
 
-- **WIZHI:** about 100 bytes free below $F800. Make room before adding resident code.
+- **WIZHI:** 7 bytes free below $F800. Make room before adding resident code.
 - **UTILITIE overlay:** about 180 bytes free.
 - **Intermittent crash:** seen once in early ROLLER testing and not reproduced since. It was probably one of the memory corruptions fixed below.
 - **Cemetery tombstone:** its glyphs (character-set block 2) look cramped, squeezed from 7 to 4 pixels. Only block 1 has hand-made 4×8 glyphs. The layout matches the Apple.
@@ -60,16 +64,18 @@ These play end to end on a 130XE in Altirra:
 
 ## Resume here
 
-Everything up to the chest tests is committed: `0587b9e` on `overlay-build`, pushed by the user.
+Combat and camp spells, 2026-10-25 (not committed yet):
 
-For step 2:
+- **Fixed:** `SCNTOC.SPELLS` was never usable. MP 1.7.9 compiles a `^record` field of a GLOBALS record as its `.var` symbol, so the resident's store went to its own data and CACT/CAMP read the field's address. Every spell name was "not found". Lookups now use `@SPELBLK_DATA`; `tools/ptrfield.py` fails the build on the pattern.
+- **Fixed:** RNDN read POKEY's RANDOM directly. It is a 17-bit shift register, so calls a fixed number of cycles apart were strongly correlated (an RNDN(3) after RNDN(8) came out 2 in 5 rounds of 6). RNDN is now a 16-bit xorshift with RANDOM stirred in each call (HIUTIL RNDSTEP).
+- **Scripts:**
+  - `test\party2.ps1 [-Priest]`: fighter A, mage B (IQ 11), priest C (PIETY 11).
+  - `test\spell.ps1 [-Priest] [-Enemy N]`: forced encounter, state saved at A's first combat menu as `out\spell.atstate2`, `out\spell3.atstate2` or `out\enemyN.atstate2`. `-Enemy` pokes ENEMYINX ($901C) as CINIT loads. Useful enemies: 10 LVL 1 MAGE (friendly: F at 60), 11 LVL 1 PRIEST, 12 CREEPING COIN (breath).
+  - `test\camp.ps1`: the same 3-character party, saved at the CAMP menu as `out\camp.atstate2`.
+- **Driving combat from a state:** each character's menu at 60, 500, 900 (a key sent earlier is lost), spell names at 40-frame gaps, RETURN, then RETURN about 400 frames later to fight. To keep the party alive, poke TTEMP04 HPLEFT after the load (`e 8be3 63 00; e 8bf0 63 00; e 8bfd 63 00`, $8BDD + 13·slot + 6). Combat works on these copies and caps them to HPMAX each round. Enemies choose their actions in CUTIL, before the party menus, so a state taken at the menu has already decided round 1.
+- Parallel runs must each have their own output folder: `altrun.ps1` writes its batch and log next to `-Out`.
 
-1. Copy `test\keys.ps1` to a variant that creates a priest or mage:
-   - In ROLLER, spend the bonus points on piety or IQ instead of strength.
-   - Pick the class letter offered for it.
-   - Add the character as a second party member in the tavern: A)dd, name, RETURN.
-2. Make a saved state at the first combat menu with a variant of `test\chest.ps1`. Use its RUNOVL `a=$0A` breakpoint to `.savestate`, without the kill pokes.
-3. Drive S)PELL from that state with `fromstate.ps1` (spell name typed in). Check the CAST overlay and the spell's effect in a dump.
+Next: breath (enemy 12), higher-level spells (needs a levelled party or poked SPELLSKN/MAGESP), then the rest of PLAN's step 2 (run, use item, dispel).
 
 **Rebuild routine.** After every rebuild, regenerate any saved state before using it.
 
@@ -154,8 +160,9 @@ Repros for each are in `../mpbugs/`.
   - `case P^.X of` and passing `P^.X` as an enum argument are rejected. Copy the field to a typed local first.
   - Record or array copies into a field through a pointer must be done per field or per element.
 - **bug16:** a `^record` field counts as 0 bytes, so later field offsets are wrong. Declare such fields as untyped `Pointer` (TENEMY2.A/B).
+- **GLOBALS pointer fields:** a `^record` field of a GLOBALS record (`SCNTOC.SPELLS`) is read and written as its `.var` symbol, not the field. Use the absolute target directly.
 - **bug17:** `V := 10*V + ARR[I]`, with V a var parameter, loses the index. Accumulate in a local.
-- **Random:** never use MP's `Random`; use HIUTIL `RNDN( R)`. MP's RndSeed is never seeded, so `Random( SmallInt)` always returned 0, and its LCG keeps bit 0 constant anyway. The build fails on `jsr SYSTEM.RANDOM`.
+- **Random:** never use MP's `Random`, and don't read POKEY's RANDOM directly; use HIUTIL `RNDN( R)`. MP's RndSeed is never seeded, so `Random( SmallInt)` always returned 0, and its LCG keeps bit 0 constant anyway. The build fails on `jsr SYSTEM.RANDOM`.
 - **No recursion, and no New/GetMem.** Either adds `psptr` and shifts the overlay's zero page away from the residents'. Write tail recursion as a loop. A function that reads its own name is a recursive call: use `Result`.
 - **Other gotchas:**
   - Write field widths are ignored. Use SPACES/WRITEINT/PRINTNUM.

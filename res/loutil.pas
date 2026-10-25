@@ -506,7 +506,6 @@ begin
     element at a constant index. }
   P := 0;
   Move( IOCACHE[ P], SCNTOC, TSCNTOC_SIZE);
-  SCNTOC.SPELLS := @SPELBLK_DATA;
   { The file stores the name strings exactly as GLOBALS.SCNNAMES holds them. }
   P := 112;
   Move( IOCACHE[ P], SCNNAMES, SCNNAMESZ);

@@ -116,7 +116,10 @@ type
     RECPERDK  : array[ ZZERO..ZEXP] of SmallInt;   { 16 bytes }
     UNUSEDXX  : array[ ZZERO..ZEXP] of SmallInt;   { 16 bytes }
     BLOFF     : array[ ZZERO..ZEXP] of SmallInt;   { 16 bytes }
-    SPELLS    : ^TSPELBLK;                          {  2 bytes }
+    SPELLS    : ^TSPELBLK;                          {  2 bytes, unused: MP 1.7.9 reads
+                                                       and writes SCNTOC.SPELLS as its .var
+                                                       symbol, not the field (2026-10-25).
+                                                       Use GLOBALS SPELBLK_DATA. }
   end;                                              { ~108 bytes total }
 
   { --- Object/item record --- }

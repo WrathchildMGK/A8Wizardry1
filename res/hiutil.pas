@@ -48,10 +48,13 @@ procedure DRAWLINE ( X, Y, DX, DY, LEN: SmallInt);
 procedure PICTOSCR ( BUFI: SmallInt);        { AP ENEMYPIC / PIC2SCRN }
 procedure PRINTBEL;
 
-{ AP "RANDOM MOD R" (0..R-1), from POKEY's RANDOM.  Not MP's Random: its
-  SmallInt version is RndSeed := $4595 * RndSeed, and nothing seeds it, so
-  every call with a range over 255 or a SmallInt variable returned 0 (and
-  it keeps bit 0 constant even when seeded). }
+{ AP "RANDOM MOD R" (0..R-1).  Not MP's Random: its SmallInt version is
+  RndSeed := $4595 * RndSeed, and nothing seeds it, so every call with a
+  range over 255 or a SmallInt variable returned 0 (and it keeps bit 0
+  constant even when seeded).  Not POKEY's RANDOM read directly either: it
+  is a 17-bit shift register, so two calls a fixed number of cycles apart
+  gave nearly the same answer (an RNDN(3) after RNDN(8) was 2 in 5 rounds
+  of 6).  A 16-bit xorshift with RANDOM stirred into it each call. }
 function RNDN( R: SmallInt): SmallInt;
 
 { Timing }
@@ -553,13 +556,32 @@ begin
     for now a no-op to avoid corrupting Mode E screen via Write(). }
 end;
 
+var RSEED : Word;
+
+{ RSEED := xorshift( RSEED xor RANDOM), shifts 7, 9, 8 (J. Metcalf). }
+procedure RNDSTEP; assembler;
+asm
+	lda $D20A
+	eor RSEED
+	sta RSEED
+	lda RSEED+1
+	lsr @
+	lda RSEED
+	ror @
+	eor RSEED+1
+	sta RSEED+1
+	ror @
+	eor RSEED
+	sta RSEED
+	eor RSEED+1
+	sta RSEED+1
+end;
+
 function RNDN( R: SmallInt): SmallInt;
-var
-  V : Word;
 begin
   if R <= 0 then exit( 0);
-  V := ( Word( Peek( $D20A) and $7F) shl 8) or Peek( $D20A);
-  Result := SmallInt( V) mod R
+  RNDSTEP;
+  Result := SmallInt( RSEED and $7FFF) mod R
 end;
 
 { ── Timing ───────────────────────────────────────────────────────────────── }

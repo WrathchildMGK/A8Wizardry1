@@ -14,7 +14,7 @@ unit CAMPUNIT;
     - BASE12.GOTOX   -> XGOTO2
     - MOVELEFT TOBJREC / TCHAR / TSCNTOC -> LOADOBJREC / SAVETCHAR / GTSCNTOC
     - SCNTOC.RACE/CLASS/ALIGN/STATUS[X] -> RACENAME/CLASSNAME/ALIGNNAME/STATNAME
-    - SCNTOC.SPELLHSH[X] -> SPTR.SPELLHSH[X] via SPTR := SCNTOC.SPELLS
+    - SCNTOC.SPELLHSH[X] -> SPTR.SPELLHSH[X] via SPTR := @SPELBLK_DATA
     - LOSTXYL.POISNAMT[1] / LOCATION[1..3] / AWARDS[4] -> LOSTXYL[1] / [1..3] / [4]
     - ARRAY[FALSE..TRUE] -> array[0..1], indexed with Byte(BOOL_EXPR)
     - USEITEM (Boolean in CASTSPEL) -> USEITEM_B (clashes with procedure USEITEM)
@@ -479,7 +479,7 @@ var
           begin AASTRAA( 'NOT EQUIPPED'); exit end;
       if RNDN( 100) < THEITEM.CHGCHANC then
         PP.EQINDEX := THEITEM.CHANGETO;
-      SPTR := SCNTOC.SPELLS;
+      SPTR := @SPELBLK_DATA;
       Result := CASTSPEL( SPTR.SPELLHSH[ THEITEM.SPELLPWR]);
       if Result <> UNWNONE then exit;
       DSPITEMS                                          { v3.2 WC017 }

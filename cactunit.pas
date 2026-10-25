@@ -178,7 +178,7 @@ var
           BUSEABLE[ POSSX];
     READOBJT;
     CLRRECT( 13, 6, 26, 4);
-    SPTR := SCNTOC.SPELLS;
+    SPTR := @SPELBLK_DATA;
     LLBASE04 := SPTR.SPELLHSH[ OBJREC.SPELLPWR];
     case SPTR.SPELL012[ OBJREC.SPELLPWR] of
       0: UIGENERC( LLBASE04);
@@ -257,7 +257,7 @@ var
 
     begin  { DOSPELL }
       Result := UNWNONE;
-      SPTR := SCNTOC.SPELLS;
+      SPTR := @SPELBLK_DATA;
       for SPELLX := 0 to 50 do
         if SPELLCST = SPTR.SPELLHSH[ SPELLX] then
           begin

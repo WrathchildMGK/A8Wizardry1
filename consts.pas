@@ -4,7 +4,7 @@ unit CONSTS;
   Source: apple/wiz1a/WIZ.TEXT and mads/wiz.pas.
 
   Spell hash values: each spell name is hashed into an integer used by the
-  spell lookup table (TSCNTOC.SPELLS.SPELLHSH).  Values are unchanged from
+  spell lookup table (SPELBLK_DATA.SPELLHSH).  Values are unchanged from
   the original Apple Pascal source.
 
   BLOCKSZ, DRIVE1, CRETURN: disk I/O parameters.  DRIVE1 = 4 is the Apple
