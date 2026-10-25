@@ -54,7 +54,6 @@ These play end to end on a 130XE in Altirra:
 - **UTILITIE overlay:** about 180 bytes free.
 - **Intermittent crash:** seen once in early ROLLER testing and not reproduced since. It was probably one of the memory corruptions fixed below.
 - **Cemetery tombstone:** its glyphs (character-set block 2) look cramped, squeezed from 7 to 4 pixels. Only block 1 has hand-made 4×8 glyphs. The layout matches the Apple.
-- **Stale file:** `combat.pas` (untracked) is the old monolithic combat source and is unused.
 - **Build tools outside the repo:** `build.ps1` uses `../tools/`:
   - `mkimports.py`, `mkovl.py`, `mkscen.py`
   - `apdisk.py`, `gen_atari_portraits.py`
