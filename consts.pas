@@ -75,7 +75,9 @@ const
   DIALMA   =  1614;  { L5: cure critical }
   BADIALMA =  2446;  { L5: harm critical }
   LITOKAN  =  4396;  { L5: fire column }
-  KANDI    =  1185;  { L5: locate person }
+  KANDI    =  1185;  { L5: locate person.  The hash of the name; the scenario's
+                         spell table holds 1885 (as on the Apple), so KANDI
+                         isn't found in combat.  Kept as v3.2: don't change. }
   DI       =   180;  { L5: raise dead }
   BADI     =   382;  { L5: slay }
 

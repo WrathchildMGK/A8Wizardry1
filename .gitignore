@@ -1,9 +1,5 @@
 mp_*.txt 
 *.a65
 
-poc/build/
-poc2/build/
-
 build/
 imp/
-test/out/

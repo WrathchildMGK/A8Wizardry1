@@ -17,7 +17,8 @@ implementation
 const
   U_CASTASPE = $08;       { unwind target: AP P010801 (U_COMBAT: COMBATG) }
 
-  { v3.2 WC020 SHOWMP (AP WIZ2): the spell name for a hash, in combat only. }
+  { v3.2 WC020 SHOWMP (AP WIZ2): the spell name for a hash, in combat only.
+    KANDI is 1885, the spell table's hash, not consts.pas KANDI (1185). }
   SHOWH : array[ 0..49] of SmallInt = (
     4178, 2409, 3983, 3245, 3340, 1953, 6181, 4731, 4744, 3180,
     6156, 7525, 6612, 4925, 6587, 4573, 3990, 1562, 3128, 2597,

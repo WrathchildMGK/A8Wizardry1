@@ -26,23 +26,24 @@ These play end to end on a 130XE in Altirra:
   - Monster portraits in colour.
   - Party options; melee with the v3.2 hit-probability text and damage.
   - Monsters die, and REWARDS gives the correct EXP and gold.
-  - Party spells: HALITO, KATINO (mage); BADIOS, DIOS (priest). Spell points are spent.
+  - Party spells: all 50 cast by `..\tests\altirra\sweep.ps1` (2026-10-25); every result matches the Apple CASTASPE code. KANDI isn't found in combat, as on the Apple: the table's hash is 1885, the code's constant 1185.
   - Enemy spells: LVL 1 PRIESTs cast BADIOS, a LVL 1 MAGE casts KATINO on the party.
   - A friendly encounter (F)ight or L)eave), and a party wipe leading to the cemetery.
-- **Camp:** a priest casts DIOS on another character.
+- **Camp:** all 50 spells swept. The 14 that CAMP accepts work (heals, DUMAPIC, MILWA/LOMILWA, DIALKO, LATUMOFIS, MAPORFIC, DI/KADORTO's "NOT DEAD", and the KANDI/MALOR prompts); the rest give "WHAT?", as on the Apple.
   - Returns to the maze afterwards.
-- **Demo:** `test/altdemo.ps1` plays all of this by itself, for recording.
+- **Demo:** `..\tests\altirra\altdemo.ps1` plays all of this by itself, for recording.
 
 ### Not yet exercised
 
 - **Combat:**
-  - Spells above level 1, and breath attacks (CREEPING COIN, enemy 12).
+  - Breath attacks (CREEPING COIN, enemy 12), and enemy spells above level 1.
+  - Spell effects that need a set-up: DI/KADORTO on a dead character, KANDI's search, a MALOR jump from camp, ZILWAN on undead, DIALKO on paralysis.
   - Parry, run, use item, dispel.
   - Parties of 2–6 and several enemy groups.
   - Leaving the cemetery after a party wipe.
   - Level drain.
 - **REWARDS:** treasure chests (open, inspect, disarm, traps) and the chest and gold pictures (PIC2SCRN, now wired up).
-- **Camp:** items, and spells other than DIOS.
+- **Camp:** items.
 - **Town:** Boltac's (buy, sell, identify), Temple of Cant.
 - **Saving:** a character persisting across a reboot.
 - **Natural encounters:** only the forced CHSTALRM encounter is tested.
@@ -68,13 +69,15 @@ Combat and camp spells, 2026-10-25 (not committed yet):
 - **Fixed:** `SCNTOC.SPELLS` was never usable. MP 1.7.9 compiles a `^record` field of a GLOBALS record as its `.var` symbol, so the resident's store went to its own data and CACT/CAMP read the field's address. Every spell name was "not found". Lookups now use `@SPELBLK_DATA`; `tools/ptrfield.py` fails the build on the pattern.
 - **Fixed:** RNDN read POKEY's RANDOM directly. It is a 17-bit shift register, so calls a fixed number of cycles apart were strongly correlated (an RNDN(3) after RNDN(8) came out 2 in 5 rounds of 6). RNDN is now a 16-bit xorshift with RANDOM stirred in each call (HIUTIL RNDSTEP).
 - **Scripts:**
-  - `test\party2.ps1 [-Priest]`: fighter A, mage B (IQ 11), priest C (PIETY 11).
-  - `test\spell.ps1 [-Priest] [-Enemy N]`: forced encounter, state saved at A's first combat menu as `out\spell.atstate2`, `out\spell3.atstate2` or `out\enemyN.atstate2`. `-Enemy` pokes ENEMYINX ($901C) as CINIT loads. Useful enemies: 10 LVL 1 MAGE (friendly: F at 60), 11 LVL 1 PRIEST, 12 CREEPING COIN (breath).
-  - `test\camp.ps1`: the same 3-character party, saved at the CAMP menu as `out\camp.atstate2`.
+  - `..\tests\altirra\party2.ps1 [-Priest]`: fighter A, mage B (IQ 11), priest C (PIETY 11).
+  - `..\tests\altirra\spell.ps1 [-Priest] [-Enemy N]`: forced encounter, state saved at A's first combat menu as `out\spell.atstate2`, `out\spell3.atstate2` or `out\enemyN.atstate2`. `-Enemy` pokes ENEMYINX ($901C) as CINIT loads. Useful enemies: 10 LVL 1 MAGE (friendly: F at 60), 11 LVL 1 PRIEST, 12 CREEPING COIN (breath).
+  - `..\tests\altirra\camp.ps1`: the same 3-character party, saved at the CAMP menu as `out\camp.atstate2`.
+  - `..\tests\altirra\sweep.ps1 -Mode combat|camp [-Only X,Y]`: casts every spell from those states with B and C poked up (all spells known, 9 points a level, level 13). It logs PRINTSTR/PRINTNUM/PUTCH output and writes a per-spell transcript to `out\sweep\<mode>.txt` (`spells.py` lists the table, `transcript.py` decodes a log). Each run's Altirra log can occasionally show a character twice: a debugger double hit, not the game.
+- **Altirra single instance:** a hidden test instance can receive the user's own Altirra launch (it took a TirNaNog run on 2026-10-25), breaking that test. Don't run tests while the user is using Altirra, or ask them to start theirs with `/nosingleinstance`.
 - **Driving combat from a state:** each character's menu at 60, 500, 900 (a key sent earlier is lost), spell names at 40-frame gaps, RETURN, then RETURN about 400 frames later to fight. To keep the party alive, poke TTEMP04 HPLEFT after the load (`e 8be3 63 00; e 8bf0 63 00; e 8bfd 63 00`, $8BDD + 13·slot + 6). Combat works on these copies and caps them to HPMAX each round. Enemies choose their actions in CUTIL, before the party menus, so a state taken at the menu has already decided round 1.
 - Parallel runs must each have their own output folder: `altrun.ps1` writes its batch and log next to `-Out`.
 
-Next: breath (enemy 12), higher-level spells (needs a levelled party or poked SPELLSKN/MAGESP), then the rest of PLAN's step 2 (run, use item, dispel).
+Next: breath (enemy 12), the set-up spell effects listed under "Not yet exercised", then the rest of PLAN's step 2 (run, use item, dispel).
 
 **Rebuild routine.** After every rebuild, regenerate any saved state before using it.
 
@@ -84,7 +87,7 @@ Next: breath (enemy 12), higher-level spells (needs a levelled party or poked SP
 
 ## Next steps (in order)
 
-1. ~~**REWARDS chest path**~~ done 2026-10-22: `test\chesttests.ps1` covers it.
+1. ~~**REWARDS chest path**~~ done 2026-10-22: `..\tests\altirra\chesttests.ps1` covers it.
    - Chest and gold pictures.
    - Open: untrapped, poison needle, crossbow (damage), alarm, teleporter.
    - Inspect: a failed roll sets the trap off.
@@ -174,28 +177,29 @@ Repros for each are in `../mpbugs/`.
 ## Build and test
 
 - **Build:** `.\build.ps1` builds everything into `build/wizardry.atr` and checks segment limits. `-Run` boots it; `-Mem64` boots an 800XL.
-- **Test runner:** `test\altrun.ps1` runs the ATR in a private, minimised Altirra (`/nosingleinstance`, its own settings in `test\out`), so your own Altirra is never touched.
+- **Test scripts** live outside this repository, in `..\tests\altirra` (moved 2026-10-25).
+- **Test runner:** `..\tests\altirra\altrun.ps1` runs the ATR in a private, minimised Altirra (`/nosingleinstance`, its own settings in `..\tests\altirra\out`). It never sends anything to your Altirra, but your own Altirra launches can land in it (see Resume here).
   - It presses keys at fixed frames by poking CH ($2FC).
-  - It dumps memory at a frame and renders the screen with `test\render.py`, which uses the real colour registers.
-  - `-Hook auto` ties the key breakpoints to WIZHI's VBI handler (found by `test\hook.ps1` from `build\wizhi.lst`, since it moves with every WIZHI change). That runs at full speed; plain `@frame>N` breakpoints are checked per instruction and slow everything down.
+  - It dumps memory at a frame and renders the screen with `..\tests\altirra\render.py`, which uses the real colour registers.
+  - `-Hook auto` ties the key breakpoints to WIZHI's VBI handler (found by `..\tests\altirra\hook.ps1` from `build\wizhi.lst`, since it moves with every WIZHI change). That runs at full speed; plain `@frame>N` breakpoints are checked per instruction and slow everything down.
   - `-Pre` adds debugger lines: `{N}` is the line's own breakpoint number and `{HOOK}` the hook address. Use them for extra memory dumps (`.writemem`) or logging (`r`, `db`).
 - **Key and demo scripts:**
-  - `test\keys.ps1`: boot, create fighter A, add him to the party, enter the maze, decline the stairs.
-  - `test\demo.ps1`: adds a walk, a forced encounter (GLOBALS CHSTALRM $9012 := 1), fight rounds, the rewards and a walk.
+  - `..\tests\altirra\keys.ps1`: boot, create fighter A, add him to the party, enter the maze, decline the stairs.
+  - `..\tests\altirra\demo.ps1`: adds a walk, a forced encounter (GLOBALS CHSTALRM $9012 := 1), fight rounds, the rewards and a walk.
   - Both take `-Scale` to shorten the gaps between keys.
   - With fixed key frames a run is deterministic. Changing any timing (`-Scale`, or a rebuild that moves code) changes the random numbers, so the encounter and fight differ.
   - At `-Scale 0.75` the game keeps up with every key: the demo is about 15,750 frames instead of 21,000. One of two runs stalled after the maze walk (frame ~12,120: the remaining keys never fired) and the rerun was clean, so the cause is unknown.
   - For tests whose outcome varies (fights), read the state from a dump (`DONEFIGH`, `XGOTO`) between steps rather than relying on fixed round counts.
   - "Invalid breakpoint number: 0" in `run.log` is harmless: the first key's breakpoint fires twice.
-- **Saved states:** a `-Pre` line can make one (`.savestate file`), e.g. `test\chest.ps1`, which saves at the chest menu. `test\fromstate.ps1 <name> <state> <keys> -Dump N` runs keys from a state in seconds, with output in `test\out\<name>\`.
+- **Saved states:** a `-Pre` line can make one (`.savestate file`), e.g. `..\tests\altirra\chest.ps1`, which saves at the chest menu. `..\tests\altirra\fromstate.ps1 <name> <state> <keys> -Dump N` runs keys from a state in seconds, with output in `..\tests\altirra\out\<name>\`.
   - Altirra's `@frame` restarts near 0 after `.loadstate`, so key frames count from the load.
   - A state captures the code, so regenerate it after every rebuild.
   - Several from-state runs can go in parallel, each with its own name.
-  - `test\chesttests.ps1` runs the chest cases this way, poking TRAPTYPE/TRAP3TYP after the load.
-  - `test\rwvars.py dump.bin [VAR…]` prints REWARDS variables and party slot 0.
+  - `..\tests\altirra\chesttests.ps1` runs the chest cases this way, poking TRAPTYPE/TRAP3TYP after the load.
+  - `..\tests\altirra\rwvars.py dump.bin [VAR…]` prints REWARDS variables and party slot 0.
 - **Random numbers:** with real randomness a run's encounters vary, so a scripted maze walk can meet a random fight. Scripts that need a known fight force the encounter straight after the stairs (`chest.ps1`).
-- **Hook addresses:** `test\hook.ps1 [proc] [binary]` finds any procedure in a listing (e.g. `RUNOVL wizres`). A breakpoint `pc=<RUNOVL> and a=$0A` catches the start of CUTIL; A holds the overlay number.
-- **Recording:** `test\altdemo.ps1` opens the same demo visibly and paused, ready to record with File › Record Video, then F5.
+- **Hook addresses:** `..\tests\altirra\hook.ps1 [proc] [binary]` finds any procedure in a listing (e.g. `RUNOVL wizres`). A breakpoint `pc=<RUNOVL> and a=$0A` catches the start of CUTIL; A holds the overlay number.
+- **Recording:** `..\tests\altirra\altdemo.ps1` opens the same demo visibly and paused, ready to record with File › Record Video, then F5.
 - **Key codes (KBCODE):**
 
   | Key | Code | Key | Code | Key | Code | Key | Code |
